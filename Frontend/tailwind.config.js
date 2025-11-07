@@ -12,6 +12,7 @@ export default {
         'surface-light': '#2a2b2c',
         border: '#2a2b2c',
         primary: '#c3ff2d',
+        'primary-dark': '#a0cc25', // Darker shade of primary for better contrast
         'text-primary': '#ffffff',
         'text-secondary': '#9ca3af',
         positive: '#00c805',
@@ -21,4 +22,3 @@ export default {
   },
   plugins: [],
 }
-
