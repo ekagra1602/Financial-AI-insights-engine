@@ -1,15 +1,15 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
-import { Navigation } from '../components/Navigation';
+import Header from '../components/Header';
 
 export const RootLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-background">
-      {/* Navigation bar that stays fixed at the top */}
-      <Navigation />
+      {/* Header with navigation */}
+      <Header />
       
       {/* Main content area */}
-      <main className="pt-16">
+      <main className="pt-6">
         <Outlet />
       </main>
     </div>
