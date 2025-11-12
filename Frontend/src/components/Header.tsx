@@ -24,45 +24,57 @@ const Header: React.FC = () => {
               </Link>
             </div>
 
-            {/* Search */}
+            {/* Search Bar */}
             <div className="relative w-96">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-text-secondary" />
               <input
                 type="text"
-                placeholder="Search"
+                placeholder="Search stocks, news, or web..."
                 className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary"
+                onFocus={(e) => {
+                  e.currentTarget.blur();
+                  window.location.href = '/web-search';
+                }}
               />
             </div>
           </div>
 
           {/* Navigation */}
           <nav className="flex items-center gap-6">
-            <Link 
-              to="/" 
+            <Link
+              to="/"
               className={`flex items-center gap-2 ${location.pathname === '/' ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}
             >
               <Home className="w-5 h-5" />
               <span>Dashboard</span>
             </Link>
-            
-            <Link 
-              to="/news" 
+
+            <Link
+              to="/web-search"
+              className={`flex items-center gap-2 ${location.pathname === '/web-search' ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}
+            >
+              <Search className="w-5 h-5" />
+              <span>Search</span>
+            </Link>
+
+            <Link
+              to="/news"
               className={`flex items-center gap-2 ${location.pathname.includes('/news') ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}
             >
               <Newspaper className="w-5 h-5" />
               <span>News</span>
             </Link>
-            
-            <Link 
-              to="#" 
+
+            <Link
+              to="#"
               className="flex items-center gap-2 text-text-primary hover:text-primary transition-colors"
             >
               <TrendingUp className="w-5 h-5" />
               <span>Insights</span>
             </Link>
-            
-            <Link 
-              to="#" 
+
+            <Link
+              to="#"
               className="flex items-center gap-2 text-text-primary hover:text-primary transition-colors"
             >
               <MessageSquare className="w-5 h-5" />
