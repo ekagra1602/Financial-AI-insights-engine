@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import SentimentHome from './SentimentHome';
 import SentimentReport from './SentimentReport';
 import ErrorMessage from './ErrorMessage';
@@ -7,7 +7,7 @@ import { demoReports } from '../data/sentimentData';
 
 type View = 'home' | 'report';
 
-const SentimentContainer: React.FC = () => {
+const SentimentContainer = () => {
   const [currentView, setCurrentView] = useState<View>('home');
   const [currentTicker, setCurrentTicker] = useState<string | null>(null);
   const [currentReport, setCurrentReport] = useState<SentimentReportType | null>(null);

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Bell, Maximize2 } from 'lucide-react';
 
 interface StockDetailHeaderProps {
@@ -11,7 +10,6 @@ interface StockDetailHeaderProps {
 }
 
 const StockDetailHeader: React.FC<StockDetailHeaderProps> = ({
-  symbol,
   companyName,
   price,
   change,

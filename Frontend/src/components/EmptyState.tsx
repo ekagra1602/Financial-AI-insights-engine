@@ -1,13 +1,13 @@
-import React from 'react';
 import { FileText } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 interface EmptyStateProps {
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   message: string;
   description?: string;
 }
 
-const EmptyState: React.FC<EmptyStateProps> = ({ icon, message, description }) => {
+const EmptyState = ({ icon, message, description }: EmptyStateProps) => {
   return (
     <div className="flex flex-col items-center justify-center p-12 text-center">
       <div className="text-text-secondary mb-4">

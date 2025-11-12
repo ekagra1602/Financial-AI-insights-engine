@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 interface ErrorMessageProps {
@@ -6,7 +5,7 @@ interface ErrorMessageProps {
   onRetry?: () => void;
 }
 
-const ErrorMessage: React.FC<ErrorMessageProps> = ({ message, onRetry }) => {
+const ErrorMessage = ({ message, onRetry }: ErrorMessageProps) => {
   return (
     <div className="bg-surface border border-negative/30 rounded-lg p-6 flex flex-col items-center justify-center">
       <AlertCircle className="w-12 h-12 text-negative mb-3" />
