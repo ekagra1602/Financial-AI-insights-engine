@@ -1,16 +1,14 @@
-import React from 'react';
-
 interface SkeletonLoaderProps {
   className?: string;
 }
 
-export const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ className = '' }) => {
+export const SkeletonLoader = ({ className = '' }: SkeletonLoaderProps) => {
   return (
     <div className={`bg-surface-light animate-pulse rounded ${className}`} />
   );
 };
 
-export const ReportSkeleton: React.FC = () => {
+export const ReportSkeleton = () => {
   return (
     <div className="space-y-6">
       {/* Header Skeleton */}

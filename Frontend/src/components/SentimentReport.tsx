@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   ArrowLeft,
   RefreshCw,
@@ -22,13 +22,13 @@ interface SentimentReportProps {
   onHorizonChange: (horizon: ForecastHorizon) => void;
 }
 
-const SentimentReport: React.FC<SentimentReportProps> = ({
+const SentimentReport = ({
   report,
   isLoading,
   onBack,
   onRefresh,
   onHorizonChange,
-}) => {
+}: SentimentReportProps) => {
   const horizons: ForecastHorizon[] = ['1D', '1W', '1M', '3M', '6M'];
   const [selectedHorizon, setSelectedHorizon] = useState<ForecastHorizon>('1M');
 

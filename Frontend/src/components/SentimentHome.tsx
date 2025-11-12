@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, TrendingUp, Clock, ChevronRight } from 'lucide-react';
 import { RecentSearch } from '../types';
 
@@ -6,7 +6,7 @@ interface SentimentHomeProps {
   onSearch: (ticker: string) => void;
 }
 
-const SentimentHome: React.FC<SentimentHomeProps> = ({ onSearch }) => {
+const SentimentHome = ({ onSearch }: SentimentHomeProps) => {
   const [searchInput, setSearchInput] = useState('');
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
 
