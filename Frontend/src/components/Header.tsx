@@ -23,20 +23,6 @@ const Header: React.FC = () => {
                 </div>
               </Link>
             </div>
-
-            {/* Search Bar */}
-            <div className="relative w-96">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-text-secondary" />
-              <input
-                type="text"
-                placeholder="Search stocks, news, or web..."
-                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary"
-                onFocus={(e) => {
-                  e.currentTarget.blur();
-                  window.location.href = '/web-search';
-                }}
-              />
-            </div>
           </div>
 
           {/* Navigation */}
