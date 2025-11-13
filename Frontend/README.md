@@ -1,4 +1,4 @@
-# Financial Insights Dashboard
+# Financial Insights Dashboard - Frontend Readme
 
 A modern, responsive financial dashboard built with React, TypeScript, and Tailwind CSS. This application provides a comprehensive view of your investment portfolio with real-time charts, stock watchlists, and financial news.
 
