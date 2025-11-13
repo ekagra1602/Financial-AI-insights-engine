@@ -1,4 +1,3 @@
-import React from 'react';
 import StockDetailHeader from './components/StockDetailHeader';
 import PortfolioChart from './components/PortfolioChart';
 import StockWatchlist from './components/StockWatchlist';

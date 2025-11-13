@@ -23,7 +23,9 @@ const StockDetailHeader: React.FC<StockDetailHeaderProps> = ({
   return (
     <div className="flex justify-between items-start mb-6">
       <div>
-        <h1 className="text-3xl font-bold text-text-primary mb-2">{companyName}</h1>
+        <h1 className="text-3xl font-bold text-text-primary mb-2">
+          {companyName} <span className="text-text-secondary text-sm ml-2">{symbol}</span>
+        </h1>
         <div className="text-5xl font-bold text-text-primary mb-2">
           ${price.toFixed(2)}
         </div>
