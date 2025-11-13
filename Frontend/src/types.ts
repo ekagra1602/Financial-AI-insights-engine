@@ -23,6 +23,29 @@ export interface NewsArticle {
   imageUrl?: string;
 }
 
+export interface SummarizedNewsArticle {
+  id: string;
+  headline: string;
+  source: string;
+  publishedTime: string;
+  summary: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  tone: 'bullish' | 'bearish' | 'neutral';
+  keywords: string[];
+  url: string;
+  ticker: string;
+}
+
+export interface RelatedArticle {
+  id: string;
+  headline: string;
+  source: string;
+  publishedTime: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  url: string;
+  relationContext?: string;
+}
+
 export interface DailyMover {
   symbol: string;
   name: string;
