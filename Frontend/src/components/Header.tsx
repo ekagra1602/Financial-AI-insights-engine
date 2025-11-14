@@ -13,13 +13,13 @@ const Header: React.FC = () => {
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
               <Link to="/" className="flex items-center gap-3">
-                <div className="text-2xl font-bold text-primary">
-                  <svg width="32" height="32" viewBox="0 0 32 32" fill="currentColor">
-                    <path d="M16 2L2 9v14c0 8 14 7 14 7s14 1 14-7V9L16 2z" />
-                  </svg>
-                </div>
+                <img 
+                  src="/Qualcomm.png" 
+                  alt="Qualcomm Logo" 
+                  className="h-8 w-auto"
+                />
                 <div className="text-text-primary font-semibold text-lg">
-                  Qualcomm Financial Engine
+                  Financial Insights Engine
                 </div>
               </Link>
             </div>
