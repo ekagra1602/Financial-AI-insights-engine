@@ -1,21 +1,22 @@
-import { useState } from 'react';
-import SentimentHome from './SentimentHome';
+import { useState, useEffect } from 'react';
 import SentimentReport from './SentimentReport';
+import EmptyState from './EmptyState';
 import ErrorMessage from './ErrorMessage';
+import { Search } from 'lucide-react';
 import { SentimentReport as SentimentReportType, ForecastHorizon } from '../types';
 import { demoReports } from '../data/sentimentData';
 
-type View = 'home' | 'report';
+interface SentimentContainerProps {
+  ticker: string | null;
+}
 
-const SentimentContainer = () => {
-  const [currentView, setCurrentView] = useState<View>('home');
-  const [currentTicker, setCurrentTicker] = useState<string | null>(null);
+const SentimentContainer = ({ ticker }: SentimentContainerProps) => {
   const [currentReport, setCurrentReport] = useState<SentimentReportType | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Simulate fetching a report
-  const fetchReport = async (ticker: string, horizon: ForecastHorizon = '1M') => {
+  const fetchReport = async (searchTicker: string, horizon: ForecastHorizon = '1M') => {
     setIsLoading(true);
     setError(null);
 
@@ -24,81 +25,82 @@ const SentimentContainer = () => {
 
     try {
       // In a real app, this would be an API call
-      const report = demoReports[ticker];
+      const report = demoReports[searchTicker];
       
       if (report) {
         // Update the horizon in the report
         setCurrentReport({ ...report, horizon });
-        setCurrentView('report');
       } else {
         // If ticker not found in demo data, show error
-        setError(`No report available for ${ticker}. Try AAPL, GOOGL, or MSFT.`);
+        setError(`No report available for ${searchTicker}. Try AAPL, GOOGL, or MSFT.`);
+        setCurrentReport(null);
       }
     } catch (err) {
       setError('Failed to fetch report. Please try again.');
+      setCurrentReport(null);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSearch = (ticker: string) => {
-    setCurrentTicker(ticker);
-    fetchReport(ticker);
-  };
-
-  const handleBack = () => {
-    setCurrentView('home');
-    setCurrentReport(null);
-    setError(null);
-  };
+  // Fetch report when ticker changes
+  useEffect(() => {
+    if (ticker) {
+      fetchReport(ticker);
+    }
+  }, [ticker]);
 
   const handleRefresh = () => {
-    if (currentTicker) {
-      fetchReport(currentTicker, currentReport?.horizon);
+    if (ticker) {
+      fetchReport(ticker, currentReport?.horizon);
     }
   };
 
   const handleHorizonChange = (horizon: ForecastHorizon) => {
-    if (currentTicker) {
-      fetchReport(currentTicker, horizon);
+    if (ticker) {
+      fetchReport(ticker, horizon);
     }
   };
 
   const handleRetry = () => {
-    if (currentTicker) {
-      fetchReport(currentTicker);
+    if (ticker) {
+      fetchReport(ticker);
     }
   };
 
+  // Show empty state when no ticker is searched
+  if (!ticker && !isLoading && !currentReport) {
+    return (
+      <div className="min-h-[calc(100vh-200px)] flex items-center justify-center bg-background">
+        <EmptyState
+          icon={<Search className="w-16 h-16" />}
+          message="Search for a stock to view sentiment analysis"
+          description="Enter a stock ticker in the search bar above to generate an AI-powered sentiment report with forecasts and risk analysis."
+        />
+      </div>
+    );
+  }
+
+  // Show error state
   if (error) {
     return (
       <div className="min-h-screen bg-background">
         <div className="max-w-4xl mx-auto px-6 py-12">
-          <ErrorMessage message={error} onRetry={currentTicker ? handleRetry : undefined} />
-          <button
-            onClick={handleBack}
-            className="mt-6 w-full px-4 py-2 bg-surface border border-border rounded-lg hover:border-primary transition-colors text-text-primary"
-          >
-            Back to Search
-          </button>
+          <ErrorMessage message={error} onRetry={ticker ? handleRetry : undefined} />
         </div>
       </div>
     );
   }
 
-  if (currentView === 'report' || isLoading) {
-    return (
-      <SentimentReport
-        report={currentReport}
-        isLoading={isLoading}
-        onBack={handleBack}
-        onRefresh={handleRefresh}
-        onHorizonChange={handleHorizonChange}
-      />
-    );
-  }
-
-  return <SentimentHome onSearch={handleSearch} />;
+  // Show report or loading state
+  return (
+    <SentimentReport
+      report={currentReport}
+      isLoading={isLoading}
+      onRefresh={handleRefresh}
+      onHorizonChange={handleHorizonChange}
+    />
+  );
 };
 
 export default SentimentContainer;

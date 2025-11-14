@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  ArrowLeft,
   RefreshCw,
   TrendingUp,
   TrendingDown,
@@ -17,7 +16,6 @@ import { ReportSkeleton } from './SkeletonLoader';
 interface SentimentReportProps {
   report: SentimentReportType | null;
   isLoading: boolean;
-  onBack: () => void;
   onRefresh: () => void;
   onHorizonChange: (horizon: ForecastHorizon) => void;
 }
@@ -25,7 +23,6 @@ interface SentimentReportProps {
 const SentimentReport = ({
   report,
   isLoading,
-  onBack,
   onRefresh,
   onHorizonChange,
 }: SentimentReportProps) => {
@@ -102,14 +99,7 @@ const SentimentReport = ({
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
         {/* Header Actions */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 text-text-secondary hover:text-primary transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>Back to Search</span>
-          </button>
+        <div className="flex justify-end mb-6">
           <button
             onClick={onRefresh}
             className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg hover:border-primary transition-colors text-text-primary"
@@ -300,39 +290,6 @@ const SentimentReport = ({
           </div>
         </div>
 
-        {/* Model Breakdown */}
-        <div className="bg-surface border border-border rounded-xl p-6 mb-6">
-          <h2 className="text-xl font-bold text-text-primary mb-4">Model Breakdown</h2>
-          <div className="space-y-3">
-            {report.forecast.modelBreakdown.map((model, index) => (
-              <div key={index} className="p-4 bg-background rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-text-primary font-medium">{model.modelName}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-text-secondary text-sm">
-                      Weight: {(model.weight * 100).toFixed(0)}%
-                    </span>
-                    <span
-                      className={`font-semibold ${
-                        model.contribution >= 0 ? 'text-positive' : 'text-negative'
-                      }`}
-                    >
-                      {model.contribution >= 0 ? '+' : ''}
-                      {model.contribution.toFixed(2)}%
-                    </span>
-                  </div>
-                </div>
-                <div className="w-full bg-surface-light rounded-full h-2">
-                  <div
-                    className="bg-primary h-2 rounded-full transition-all"
-                    style={{ width: `${model.weight * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* Risk Flags */}
         {report.risk.flags.length > 0 && (
           <div className="bg-surface border border-border rounded-xl p-6 mb-6">
@@ -418,38 +375,6 @@ const SentimentReport = ({
                 </span>
               </div>
               <p className="text-text-primary leading-relaxed">{report.narrative.explanation}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Recent Price Trend */}
-        {report.recentPrices && report.recentPrices.length > 0 && (
-          <div className="bg-surface border border-border rounded-xl p-6">
-            <h2 className="text-xl font-bold text-text-primary mb-4">Recent Price Trend</h2>
-            <div className="h-32 flex items-end justify-between gap-1">
-              {report.recentPrices.map((price, index) => {
-                const maxPrice = Math.max(...report.recentPrices!);
-                const minPrice = Math.min(...report.recentPrices!);
-                const range = maxPrice - minPrice;
-                const height = range > 0 ? ((price - minPrice) / range) * 100 : 50;
-
-                return (
-                  <div key={index} className="flex-1 flex flex-col justify-end group relative">
-                    <div
-                      className="bg-primary rounded-t hover:bg-primary/80 transition-colors"
-                      style={{ height: `${height}%` }}
-                    >
-                      <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 transform -translate-x-1/2 bg-surface-light px-2 py-1 rounded text-xs text-text-primary whitespace-nowrap transition-opacity">
-                        ${price.toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-4 flex justify-between text-text-secondary text-sm">
-              <span>15 days ago</span>
-              <span>Today</span>
             </div>
           </div>
         )}

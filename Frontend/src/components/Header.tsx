@@ -1,10 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Search, Bell, MessageSquare, TrendingUp, Home, Newspaper } from 'lucide-react';
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  onSearch?: (ticker: string) => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onSearch }) => {
   const location = useLocation();
-  
+  const [searchInput, setSearchInput] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchInput.trim() && onSearch) {
+      onSearch(searchInput.trim().toUpperCase());
+      setSearchInput('');
+    }
+  };
+
   return (
     <header className="bg-surface border-b border-border sticky top-0 z-50">
       <div className="max-w-[1920px] mx-auto px-6 py-4">
@@ -23,6 +36,18 @@ const Header: React.FC = () => {
                 </div>
               </Link>
             </div>
+
+            {/* Search */}
+            <form onSubmit={handleSubmit} className="relative w-96">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-text-secondary" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search stock ticker (e.g., AAPL, GOOGL, MSFT)"
+                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary"
+              />
+            </form>
           </div>
 
           {/* Navigation */}
