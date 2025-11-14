@@ -9,7 +9,7 @@ export const RootLayout: React.FC = () => {
       <Header />
       
       {/* Main content area */}
-      <main className="pt-6">
+      <main>
         <Outlet />
       </main>
     </div>

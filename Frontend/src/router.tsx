@@ -2,6 +2,7 @@
 import { createBrowserRouter } from 'react-router-dom';
 import App from './App';
 import { NewsPage } from './pages/NewsPage';
+import { ChatbotPage } from './pages/ChatbotPage';
 import { RootLayout } from './layouts/RootLayout';
 import WebSearch from './components/WebSearch';
 
@@ -21,6 +22,10 @@ const router = createBrowserRouter([
       {
         path: '/news',
         element: <NewsPage />
+      },
+      {
+        path: '/chatbot',
+        element: <ChatbotPage />
       },
       // Keep compatibility with old URLs
       {

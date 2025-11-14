@@ -60,8 +60,8 @@ const Header: React.FC = () => {
             </Link>
 
             <Link
-              to="#"
-              className="flex items-center gap-2 text-text-primary hover:text-primary transition-colors"
+              to="/chatbot"
+              className={`flex items-center gap-2 ${location.pathname === '/chatbot' ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}
             >
               <MessageSquare className="w-5 h-5" />
               <span>Chatbot</span>
