@@ -10,6 +10,7 @@ interface StockDetailHeaderProps {
 }
 
 const StockDetailHeader: React.FC<StockDetailHeaderProps> = ({
+  symbol,
   companyName,
   price,
   change,

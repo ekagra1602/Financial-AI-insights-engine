@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Search, Bell, MessageSquare, TrendingUp, Home, Newspaper } from 'lucide-react';
 
 interface HeaderProps {
@@ -8,13 +8,24 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onSearch }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchInput.trim() && onSearch) {
-      onSearch(searchInput.trim().toUpperCase());
+    // Don't navigate automatically - user clicks Insights button to view report
+  };
+
+  const handleInsightsClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (searchInput.trim()) {
+      const ticker = searchInput.trim().toUpperCase();
+      navigate(`/sentiment-reports?ticker=${ticker}`);
       setSearchInput('');
+      // Also call onSearch callback if provided (for backward compatibility)
+      if (onSearch) {
+        onSearch(ticker);
+      }
     }
   };
 
@@ -76,13 +87,15 @@ const Header: React.FC<HeaderProps> = ({ onSearch }) => {
               <span>News</span>
             </Link>
 
-            <Link
-              to="#"
-              className="flex items-center gap-2 text-text-primary hover:text-primary transition-colors"
+            <button
+              onClick={handleInsightsClick}
+              className={`flex items-center gap-2 bg-transparent border-none p-0 font-inherit cursor-pointer ${location.pathname.includes('/sentiment-reports') ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors ${!searchInput.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={!searchInput.trim()}
+              title={!searchInput.trim() ? 'Enter a stock ticker first' : 'View sentiment analysis'}
             >
               <TrendingUp className="w-5 h-5" />
               <span>Insights</span>
-            </Link>
+            </button>
 
             <Link
               to="/chatbot"
