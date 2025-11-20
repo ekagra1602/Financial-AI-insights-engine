@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Eye, Zap, Plus } from 'lucide-react';
 import { StockData } from '../types';
 import { stockWatchlist } from '../data/demoData';
 import Sparkline from './Sparkline';
 
 const StockWatchlist: React.FC = () => {
+  const navigate = useNavigate();
   const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({
     'options-watchlist': false,
     'my-first-list': false,
@@ -22,7 +24,10 @@ const StockWatchlist: React.FC = () => {
     const sparklineColor = isPositive ? '#00c805' : '#ff5000';
 
     return (
-      <div className="flex items-center justify-between py-3 hover:bg-surface-light px-3 -mx-3 rounded-lg transition-colors cursor-pointer">
+      <div
+        onClick={() => navigate(`/stock/${stock.symbol}`)}
+        className="flex items-center justify-between py-3 hover:bg-surface-light px-3 -mx-3 rounded-lg transition-colors cursor-pointer"
+      >
         <div className="flex-1">
           <div className="font-semibold text-text-primary">{stock.symbol}</div>
           {stock.shares && (

@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import App from './App';
 import { NewsPage } from './pages/NewsPage';
 import { ChatbotPage } from './pages/ChatbotPage';
+import { StockDetailPage } from './pages/StockDetailPage';
 import { RootLayout } from './layouts/RootLayout';
 import WebSearch from './components/WebSearch';
 
@@ -14,6 +15,10 @@ const router = createBrowserRouter([
       {
         path: '/',
         element: <App />
+      },
+      {
+        path: '/stock/:symbol',
+        element: <StockDetailPage />
       },
       {
         path: '/web-search',

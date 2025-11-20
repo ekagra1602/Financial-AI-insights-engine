@@ -55,3 +55,30 @@ export interface DailyMover {
 
 export type TimePeriod = '1D' | '1W' | '1M' | '3M' | 'YTD' | '1Y' | 'ALL';
 
+export interface KeyStatistics {
+  market_cap: number | null;
+  pe_ratio: number | null;
+  dividend_yield: number | null;
+  average_volume: number | null;
+  high_today: number | null;
+  low_today: number | null;
+  open_price: number | null;
+  current_price: number | null;
+  prev_close_price: number | null;
+  volume: number | null;
+  fifty_two_week_high: number | null;
+  fifty_two_week_low: number | null;
+  name?: string;
+  description?: string;
+  country?: string;
+  currency?: string;
+  exchange?: string;
+  ipo?: string;
+  marketCapitalization?: number;
+  shareOutstanding?: number;
+  ticker?: string;
+  weburl?: string;
+  logo?: string;
+  finnhubIndustry?: string;
+}
+
