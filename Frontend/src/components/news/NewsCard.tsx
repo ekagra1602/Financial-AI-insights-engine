@@ -63,7 +63,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) =>
       <div className="flex flex-col">
         {/* Header with Ticker and Publication Info */}
         <div className="flex items-center mb-3">
-          <div className="bg-slate-800 dark:bg-slate-700 text-white px-3 py-1.5 rounded font-bold text-sm mr-2">
+          <div className="bg-primary text-black px-3 py-1.5 rounded-lg font-bold text-sm mr-2 shadow-sm">
             {article.ticker}
           </div>
           

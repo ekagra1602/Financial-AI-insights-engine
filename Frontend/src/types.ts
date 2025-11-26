@@ -42,6 +42,8 @@ export interface RelatedArticle {
   source: string;
   publishedTime: string;
   sentiment: 'positive' | 'negative' | 'neutral';
+  tone?: 'bullish' | 'bearish' | 'neutral';
+  ticker?: string;
   url: string;
   relationContext?: string;
 }

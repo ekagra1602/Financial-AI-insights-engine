@@ -161,6 +161,8 @@ export const NewsPage: React.FC = () => {
         source: article.source,
         publishedTime: article.publishedTime,
         sentiment: article.sentiment,
+        tone: article.tone,
+        ticker: article.ticker,
         url: article.url,
         relationContext: matchingKeyword || 'Related Content'
       };
@@ -234,7 +236,7 @@ export const NewsPage: React.FC = () => {
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Financial News
-                {ticker && <span className="ml-2 text-primary">{ticker}</span>}
+                {ticker && <span className="ml-2 px-3 py-1 bg-primary text-black rounded-lg font-bold">{ticker}</span>}
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Updated {lastUpdated} • {newsArticles.length} articles
