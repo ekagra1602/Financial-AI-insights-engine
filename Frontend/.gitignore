@@ -7,6 +7,12 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+CHANGELOG.md
+FEATURES.md
+FILE_STRUCTURE.md
+INSTALL.md
+UPDATE_SUMMARY.md
+
 node_modules
 dist
 dist-ssr

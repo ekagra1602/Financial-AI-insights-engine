@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { Settings } from 'lucide-react';
-import { TimePeriod, PortfolioDataPoint } from '../types';
+import { TimePeriod } from '../types';
 import { portfolioData } from '../data/demoData';
 
 interface StockChartProps {
@@ -10,7 +10,6 @@ interface StockChartProps {
 
 const timePeriods: TimePeriod[] = ['1D', '1W', '1M', '3M', 'YTD', '1Y', 'ALL'];
 const extendedTimePeriods = ['1D', '1W', '1M', '3M', 'YTD', '1Y', '5Y', 'MAX'] as const;
-type ExtendedTimePeriod = typeof extendedTimePeriods[number];
 
 const PortfolioChart: React.FC<StockChartProps> = ({ showExtendedPeriods = false }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('1D');
@@ -102,12 +101,6 @@ const PortfolioChart: React.FC<StockChartProps> = ({ showExtendedPeriods = false
     </div>
   );
 };
-
-const ChevronDown = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-  </svg>
-);
 
 export default PortfolioChart;
 
