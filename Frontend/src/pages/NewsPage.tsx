@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { RefreshCw, Filter } from 'lucide-react';
+import { Filter } from 'lucide-react';
 
 import { NewsCard } from '../components/news/NewsCard';
 import { RelatedArticles } from '../components/news/RelatedArticles';
@@ -258,15 +258,6 @@ export const NewsPage: React.FC = () => {
                     {selectedTickers.length}
                   </span>
                 )}
-              </button>
-              
-              <button
-                onClick={handleRefresh}
-                disabled={loading}
-                className="inline-flex items-center px-4 py-2 bg-primary text-black rounded-lg hover:bg-primary/90 transition-colors disabled:bg-gray-400 disabled:text-gray-700"
-              >
-                <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
               </button>
             </div>
           </div>
