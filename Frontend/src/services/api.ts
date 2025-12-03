@@ -4,7 +4,15 @@ const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 export const fetchKeyStatistics = async (symbol: string): Promise<KeyStatistics> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/quote?symbol=${symbol}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+    const response = await fetch(`${API_BASE_URL}/quote?symbol=${symbol}`, {
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
       throw new Error('Failed to fetch key statistics');
     }

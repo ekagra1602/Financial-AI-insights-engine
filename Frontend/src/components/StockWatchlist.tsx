@@ -1,16 +1,98 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Eye, Zap, Plus } from 'lucide-react';
 import { StockData } from '../types';
 import { stockWatchlist } from '../data/demoData';
+import { fetchKeyStatistics } from '../services/api';
 import Sparkline from './Sparkline';
+
+// Cache for stock data to prevent re-fetching on navigation
+let cachedStocks: StockData[] | null = null;
+let isWatchlistFetching = false;
 
 const StockWatchlist: React.FC = () => {
   const navigate = useNavigate();
+  const [stocks, setStocks] = useState<StockData[]>(cachedStocks || stockWatchlist);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newSymbol, setNewSymbol] = useState('');
   const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({
     'options-watchlist': false,
     'my-first-list': false,
   });
+
+  useEffect(() => {
+    // Only fetch if we don't have cached data and aren't currently fetching
+    if (cachedStocks || isWatchlistFetching) return;
+
+    const fetchStockData = async () => {
+      isWatchlistFetching = true;
+      try {
+        const updatedStocks = await Promise.all(
+          stockWatchlist.map(async (stock) => {
+            try {
+              const stats = await fetchKeyStatistics(stock.symbol);
+              if (stats.current_price && stats.prev_close_price) {
+                const price = stats.current_price;
+                const change = price - stats.prev_close_price;
+                const changePercent = (change / stats.prev_close_price) * 100;
+                
+                return {
+                  ...stock,
+                  price,
+                  change,
+                  changePercent,
+                };
+              }
+              return stock;
+            } catch (error) {
+              console.error(`Failed to fetch data for ${stock.symbol}`, error);
+              return stock;
+            }
+          })
+        );
+        cachedStocks = updatedStocks;
+        setStocks(updatedStocks);
+      } finally {
+        isWatchlistFetching = false;
+      }
+    };
+
+    fetchStockData();
+  }, []);
+
+  const handleAddStock = async (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && newSymbol) {
+      const symbol = newSymbol.toUpperCase();
+      
+      // Check if already exists
+      if (stocks.some(s => s.symbol === symbol)) {
+        setIsAdding(false);
+        setNewSymbol('');
+        return;
+      }
+
+      try {
+        const stats = await fetchKeyStatistics(symbol);
+        
+        const newStock: StockData = {
+          symbol: symbol,
+          price: stats.current_price || 0,
+          change: (stats.current_price && stats.prev_close_price) ? stats.current_price - stats.prev_close_price : 0,
+          changePercent: (stats.current_price && stats.prev_close_price) ? ((stats.current_price - stats.prev_close_price) / stats.prev_close_price) * 100 : 0,
+          sparklineData: [], // Placeholder
+        };
+
+        const updatedStocks = [...stocks, newStock];
+        setStocks(updatedStocks);
+        cachedStocks = updatedStocks;
+        setIsAdding(false);
+        setNewSymbol('');
+      } catch (error) {
+        console.error("Invalid stock symbol");
+        // In a real app, show an error toast
+      }
+    }
+  };
 
   const toggleList = (listId: string) => {
     setExpandedLists((prev) => ({
@@ -57,7 +139,7 @@ const StockWatchlist: React.FC = () => {
 
       {/* User's stocks */}
       <div className="mb-6">
-        {stockWatchlist
+        {stocks
           .filter((stock) => stock.shares)
           .map((stock) => (
             <StockItem key={stock.symbol} stock={stock} />
@@ -66,14 +148,31 @@ const StockWatchlist: React.FC = () => {
 
       {/* Lists section */}
       <div className="border-t border-border pt-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-text-primary">Lists</h3>
-          <button className="text-text-secondary hover:text-text-primary transition-colors">
-            <Plus className="w-5 h-5" />
-          </button>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-base font-semibold text-text-primary">Lists</h3>
+        <button 
+          onClick={() => setIsAdding(!isAdding)}
+          className={`text-text-secondary hover:text-text-primary transition-colors ${isAdding ? 'text-primary' : ''}`}
+        >
+          <Plus className={`w-5 h-5 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
+        </button>
+      </div>
 
-        {/* Options Watchlist */}
+      {isAdding && (
+        <div className="mb-4 px-1">
+          <input
+            autoFocus
+            type="text"
+            value={newSymbol}
+            onChange={(e) => setNewSymbol(e.target.value)}
+            onKeyDown={handleAddStock}
+            placeholder="Symbol (e.g. MSFT)"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-primary placeholder-text-secondary"
+          />
+        </div>
+      )}
+
+      {/* Options Watchlist */}
         <div className="mb-3">
           <button
             onClick={() => toggleList('options-watchlist')}
@@ -111,7 +210,7 @@ const StockWatchlist: React.FC = () => {
 
         {/* Watchlist stocks */}
         <div className="border-t border-border pt-3">
-          {stockWatchlist
+          {stocks
             .filter((stock) => !stock.shares)
             .map((stock) => (
               <StockItem key={stock.symbol} stock={stock} />

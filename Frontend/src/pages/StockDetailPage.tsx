@@ -12,6 +12,11 @@ import { featuredStock, stockNewsArticles, tradingTrendsData } from '../data/dem
 import { fetchKeyStatistics } from '../services/api';
 import { KeyStatistics as KeyStatisticsType } from '../types';
 
+// Cache to store stock details
+const stockCache: Record<string, KeyStatisticsType> = {};
+// Track active fetches to prevent duplicates
+const activeFetches: Record<string, Promise<KeyStatisticsType>> = {};
+
 export const StockDetailPage: React.FC = () => {
     const { symbol } = useParams<{ symbol: string }>();
     const [keyStats, setKeyStats] = useState<KeyStatisticsType | null>(null);
@@ -20,13 +25,39 @@ export const StockDetailPage: React.FC = () => {
     useEffect(() => {
         const loadData = async () => {
             if (symbol) {
+                // Check cache first
+                if (stockCache[symbol]) {
+                    setKeyStats(stockCache[symbol]);
+                    setLoading(false);
+                    return;
+                }
+
+                // Check if already fetching
+                if (activeFetches[symbol]) {
+                    try {
+                        const stats = await activeFetches[symbol];
+                        setKeyStats(stats);
+                    } catch (error) {
+                        console.error("Failed to load stats from active fetch", error);
+                    } finally {
+                        setLoading(false);
+                    }
+                    return;
+                }
+
                 try {
                     setLoading(true);
-                    const stats = await fetchKeyStatistics(symbol);
+                    // Start new fetch
+                    const fetchPromise = fetchKeyStatistics(symbol);
+                    activeFetches[symbol] = fetchPromise;
+                    
+                    const stats = await fetchPromise;
+                    stockCache[symbol] = stats; // Update cache
                     setKeyStats(stats);
                 } catch (error) {
                     console.error("Failed to load stats", error);
                 } finally {
+                    delete activeFetches[symbol]; // Cleanup
                     setLoading(false);
                 }
             }
