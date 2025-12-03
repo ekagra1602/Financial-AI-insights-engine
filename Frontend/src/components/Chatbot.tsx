@@ -15,7 +15,7 @@ interface ChatbotProps {
   onMessagesChange?: (messages: Message[]) => void;
 }
 
-const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessages, onMessagesChange }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, initialMessages, onMessagesChange }) => {
   const defaultMessage: Message = {
     id: '1',
     role: 'assistant',
