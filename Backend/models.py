@@ -1,3 +1,6 @@
+from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy.orm import relationship
+from database import Base
 from pydantic import BaseModel
 from typing import Optional
 
@@ -26,3 +29,21 @@ class KeyStatistics(BaseModel):
     weburl: Optional[str] = None
     logo: Optional[str] = None
     finnhubIndustry: Optional[str] = None
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+
+    watchlist_items = relationship("Watchlist", back_populates="owner")
+
+class Watchlist(Base):
+    __tablename__ = "watchlist"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+
+    owner = relationship("User", back_populates="watchlist_items")

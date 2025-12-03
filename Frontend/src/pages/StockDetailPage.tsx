@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import StockDetailHeader from '../components/StockDetailHeader';
-import PortfolioChart from '../components/PortfolioChart';
+import StockChart from '../components/StockChart';
 import StockAbout from '../components/StockAbout';
 import KeyStatistics from '../components/KeyStatistics';
-import RelatedLists from '../components/RelatedLists';
-import NewsSection from '../components/NewsSection';
-import TradingTrends from '../components/TradingTrends';
-import { featuredStock, stockNewsArticles, tradingTrendsData } from '../data/demoData';
+import { featuredStock } from '../data/demoData';
 import { fetchKeyStatistics } from '../services/api';
 import { KeyStatistics as KeyStatisticsType } from '../types';
 
@@ -37,20 +34,6 @@ export const StockDetailPage: React.FC = () => {
         return <div className="p-8 text-center text-text-primary">Loading stock data...</div>;
     }
 
-    // Transform API data to component format
-    const formattedStats = keyStats ? [
-        { label: 'Market cap', value: keyStats.market_cap ? `$${(keyStats.market_cap / 1000).toFixed(2)}B` : '-' },
-        { label: 'Price-Earnings ratio', value: keyStats.pe_ratio ? keyStats.pe_ratio.toFixed(2) : '-' },
-        { label: 'Dividend yield', value: keyStats.dividend_yield ? `${keyStats.dividend_yield.toFixed(2)}%` : '-' },
-        { label: 'Average volume', value: keyStats.average_volume ? `${(keyStats.average_volume / 1000000).toFixed(2)}M` : '-' },
-        { label: 'High today', value: keyStats.high_today ? `$${keyStats.high_today.toFixed(2)}` : '-' },
-        { label: 'Low today', value: keyStats.low_today ? `$${keyStats.low_today.toFixed(2)}` : '-' },
-        { label: 'Open price', value: keyStats.open_price ? `$${keyStats.open_price.toFixed(2)}` : '-' },
-        { label: 'Volume', value: keyStats.volume ? `${(keyStats.volume / 1000000).toFixed(2)}M` : '-' },
-        { label: '52 Week high', value: keyStats.fifty_two_week_high ? `$${keyStats.fifty_two_week_high.toFixed(2)}` : '-' },
-        { label: '52 Week low', value: keyStats.fifty_two_week_low ? `$${keyStats.fifty_two_week_low.toFixed(2)}` : '-' },
-    ] : featuredStock.statistics; // Fallback to demo data if fetch fails or loading
-
     return (
         <div className="max-w-[1920px] mx-auto px-6 py-8">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -65,29 +48,19 @@ export const StockDetailPage: React.FC = () => {
                         marketStatus={featuredStock.marketStatus}
                     />
 
-                    <PortfolioChart showExtendedPeriods={true} />
+                    <StockChart symbol={symbol || featuredStock.symbol} />
 
                     <StockAbout
                         description={keyStats?.description || `Company profile for ${keyStats?.name || symbol}. Industry: ${keyStats?.finnhubIndustry || 'N/A'}. Country: ${keyStats?.country || 'N/A'}.`}
-                        companyInfo={{
-                            ceo: 'N/A', // Not in profile2
-                            employees: 'N/A', // Not in profile2
-                            headquarters: keyStats?.country || 'N/A',
-                            founded: keyStats?.ipo || 'N/A',
-                        }}
+                        companyInfo={[
+                            { label: 'CEO', value: 'N/A' },
+                            { label: 'Employees', value: 'N/A' },
+                            { label: 'Headquarters', value: keyStats?.country || 'N/A' },
+                            { label: 'Founded', value: keyStats?.ipo || 'N/A' },
+                        ]}
                     />
 
-                    <KeyStatistics stats={formattedStats} />
-
-                    <RelatedLists />
-
-                    <NewsSection articles={stockNewsArticles} />
-
-                    <TradingTrends
-                        data={tradingTrendsData}
-                        changePercent={-0.04}
-                        lastUpdated="Nov 5"
-                    />
+                    <KeyStatistics stats={keyStats || undefined} />
                 </div>
             </div>
         </div>

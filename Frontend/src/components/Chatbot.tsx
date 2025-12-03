@@ -15,7 +15,7 @@ interface ChatbotProps {
   onMessagesChange?: (messages: Message[]) => void;
 }
 
-const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessages, onMessagesChange }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ conversationId, initialMessages, onMessagesChange }) => {
   const defaultMessage: Message = {
     id: '1',
     role: 'assistant',
@@ -82,7 +82,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
   // Mock response generator for testing without backend
   const getMockResponse = (userMessage: string): string => {
     const lowerMessage = userMessage.toLowerCase();
-    
+
     // Stock price queries
     if (lowerMessage.includes('price') || lowerMessage.includes('stock') || lowerMessage.includes('ticker')) {
       if (lowerMessage.includes('qualcomm') || lowerMessage.includes('qcom')) {
@@ -93,37 +93,37 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
       }
       return 'I can help you find stock prices for any ticker symbol. For example, Qualcomm (QCOM) is currently at $142.50. Which stock would you like to know more about?';
     }
-    
+
     // Market trends
     if (lowerMessage.includes('market') || lowerMessage.includes('trend') || lowerMessage.includes('dow') || lowerMessage.includes('s&p')) {
       return 'The market is showing mixed signals today. The S&P 500 is up 0.3%, while the Dow Jones is down 0.1%. Technology stocks are performing well, with semiconductors leading gains. Would you like specific sector analysis?';
     }
-    
+
     // News queries
     if (lowerMessage.includes('news') || lowerMessage.includes('latest') || lowerMessage.includes('update')) {
       return 'Here are the latest financial news highlights:\n\n• Tech stocks rally on strong earnings reports\n• Federal Reserve maintains current interest rates\n• Semiconductor sector shows 15% growth this quarter\n• New AI regulations impact tech valuations\n\nWould you like details on any specific news item?';
     }
-    
+
     // Portfolio questions
     if (lowerMessage.includes('portfolio') || lowerMessage.includes('investment') || lowerMessage.includes('holdings')) {
       return 'Based on your portfolio, you\'re currently diversified across technology, healthcare, and finance sectors. Your portfolio is up 8.5% this quarter. Top performers include QCOM (+12%), AAPL (+6%), and MSFT (+9%). Would you like a detailed breakdown?';
     }
-    
+
     // Earnings questions
     if (lowerMessage.includes('earnings') || lowerMessage.includes('revenue') || lowerMessage.includes('profit')) {
       return 'Qualcomm reported strong Q4 earnings with revenue of $9.3B, up 5% YoY. EPS beat estimates at $2.02. The company\'s automotive and IoT segments showed particularly strong growth. Should I dive deeper into the financials?';
     }
-    
+
     // Greetings
     if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
       return 'Hello! I\'m here to help with your financial questions. I can assist with stock prices, market analysis, news, portfolio insights, and more. What would you like to know?';
     }
-    
+
     // Help requests
     if (lowerMessage.includes('help') || lowerMessage.includes('what can you do') || lowerMessage.includes('capabilities')) {
       return 'I can help you with:\n\n📊 Stock prices and real-time quotes\n📈 Market trends and analysis\n📰 Latest financial news\n💼 Portfolio insights and recommendations\n📉 Earnings reports and financial metrics\n🔍 Company research and analysis\n\nWhat would you like to explore?';
     }
-    
+
     // Default responses
     const defaultResponses = [
       'That\'s an interesting question! Let me help you with that. Based on current market data, I can provide insights on stock performance, market trends, or financial news. What specific information are you looking for?',
@@ -131,7 +131,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
       'Great question! I specialize in financial information and market analysis. I can help you with stock prices, portfolio insights, earnings data, or market trends. What would you like to explore?',
       'I\'m here to assist with your financial queries. I can provide information on stocks, market trends, news, and portfolio analysis. How can I help you today?'
     ];
-    
+
     return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
   };
 
@@ -184,7 +184,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
 
       // Mock response for testing
       const responseText = getMockResponse(text);
-      
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -219,7 +219,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
   const startRecording = () => {
     // Check if SpeechRecognition is available
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
+
     if (!SpeechRecognition) {
       alert('Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.');
       return;
@@ -304,7 +304,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
       recognitionRef.current.stop();
       recognitionRef.current = null;
       setInterimTranscript('');
-      
+
       // If there's text in the input, send it
       if (inputText.trim()) {
         handleSendMessage(inputText.trim());
@@ -338,9 +338,8 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex gap-3 ${
-              message.role === 'user' ? 'justify-end' : 'justify-start'
-            }`}
+            className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
           >
             {message.role === 'assistant' && (
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
@@ -348,16 +347,14 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
               </div>
             )}
             <div
-              className={`max-w-[70%] rounded-lg px-4 py-3 ${
-                message.role === 'user'
+              className={`max-w-[70%] rounded-lg px-4 py-3 ${message.role === 'user'
                   ? 'bg-primary text-background'
                   : 'bg-surface border border-border text-text-primary'
-              }`}
+                }`}
             >
               <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-              <p className={`text-xs mt-1 ${
-                message.role === 'user' ? 'text-background/70' : 'text-text-secondary'
-              }`}>
+              <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-background/70' : 'text-text-secondary'
+                }`}>
                 {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
@@ -406,11 +403,10 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId, conversationId, initialMessag
             type="button"
             onClick={toggleRecording}
             disabled={isLoading}
-            className={`px-4 py-3 rounded-lg transition-colors ${
-              isRecording
+            className={`px-4 py-3 rounded-lg transition-colors ${isRecording
                 ? 'bg-negative text-white hover:bg-negative/90'
                 : 'bg-surface-light text-text-primary hover:bg-surface-light/80 border border-border'
-            }`}
+              }`}
             title={isRecording ? 'Stop recording' : 'Start voice recording'}
           >
             {isRecording ? (

@@ -6,6 +6,11 @@ export interface StockData {
   changePercent: number;
   shares?: number;
   sparklineData: number[];
+  statistics?: KeyStatistics;
+  about?: {
+    description: string;
+    companyInfo: { label: string; value: string }[];
+  };
 }
 
 export interface PortfolioDataPoint {
