@@ -7,6 +7,7 @@ import KeyStatistics from '../components/KeyStatistics';
 import RelatedLists from '../components/RelatedLists';
 import NewsSection from '../components/NewsSection';
 import TradingTrends from '../components/TradingTrends';
+import StockWatchlist from '../components/StockWatchlist';
 import { featuredStock, stockNewsArticles, tradingTrendsData } from '../data/demoData';
 import { fetchKeyStatistics } from '../services/api';
 import { KeyStatistics as KeyStatisticsType } from '../types';
@@ -88,6 +89,13 @@ export const StockDetailPage: React.FC = () => {
                         changePercent={-0.04}
                         lastUpdated="Nov 5"
                     />
+                </div>
+
+                {/* Sidebar - Stock Watchlist */}
+                <div className="lg:col-span-1">
+                    <div className="sticky top-24">
+                        <StockWatchlist />
+                    </div>
                 </div>
             </div>
         </div>

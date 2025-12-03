@@ -1,5 +1,5 @@
 // Router configuration
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import App from './App';
 import { NewsPage } from './pages/NewsPage';
 import { ChatbotPage } from './pages/ChatbotPage';
@@ -14,7 +14,7 @@ const router = createBrowserRouter([
     children: [
       {
         path: '/',
-        element: <App />
+        element: <Navigate to="/stock/ORCL" replace />
       },
       {
         path: '/stock/:symbol',
