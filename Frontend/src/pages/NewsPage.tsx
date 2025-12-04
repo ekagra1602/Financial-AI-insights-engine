@@ -64,6 +64,9 @@ export const NewsPage: React.FC = () => {
     setLoading(true);
     setError(null);
     
+    // Simple way to avoid race conditions: clear articles immediately when fetching starts
+    // setNewsArticles([]); // Optional: if you want to clear old news while loading new
+
     try {
         let articles: SummarizedNewsArticle[] = [];
         
@@ -74,6 +77,7 @@ export const NewsPage: React.FC = () => {
         } 
         // If tickers are selected in filter, fetch for them
         else if (selectedTickers.length > 0) {
+            console.log("Fetching news for selected tickers:", selectedTickers);
             // We use map with internal try/catch to ensure one failure doesn't break all
             const promises = selectedTickers.map(async (t) => {
                 try {
@@ -96,19 +100,36 @@ export const NewsPage: React.FC = () => {
         } 
         // If NO tickers selected, fetch general market news
         else {
+            console.log("Fetching general market news");
             const newsList = await fetchMarketNews();
             // Market news might not have a specific ticker, or might have 'market'
             articles = mapNewsResponse(newsList, 'Market');
         }
 
-        // Sort by recency
-        articles.sort((a: any, b: any) => b.rawDatetime - a.rawDatetime);
+        // Deduplicate articles based on URL
+        const uniqueArticles: SummarizedNewsArticle[] = [];
+        const seenUrls = new Set<string>();
 
-        if (articles.length === 0) {
-            setError('No news articles available.');
+        articles.forEach(article => {
+            if (!seenUrls.has(article.url)) {
+                seenUrls.add(article.url);
+                uniqueArticles.push(article);
+            }
+        });
+        
+        // Sort by recency
+        uniqueArticles.sort((a: any, b: any) => b.rawDatetime - a.rawDatetime);
+
+        if (uniqueArticles.length === 0) {
+            // Only set error if we really have no articles and we expected some
+            if (selectedTickers.length > 0 || ticker) {
+                 setError('No news articles available for selected companies.');
+            } else {
+                 setError('No market news available.');
+            }
         }
 
-        setNewsArticles(articles);
+        setNewsArticles(uniqueArticles);
         setLastUpdated('Just now');
 
     } catch (err) {
@@ -209,11 +230,11 @@ export const NewsPage: React.FC = () => {
   const toggleTickerSelection = (tickerSymbol: string) => {
     setSelectedTickers(prev => {
       // Create the new selected tickers array
-      const newSelected = prev.includes(tickerSymbol)
-        ? prev.filter(t => t !== tickerSymbol)
-        : [...prev, tickerSymbol];
-      
-      return newSelected;
+      if (prev.includes(tickerSymbol)) {
+          return prev.filter(t => t !== tickerSymbol);
+      } else {
+          return [...prev, tickerSymbol];
+      }
     });
   };
   

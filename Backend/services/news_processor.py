@@ -12,36 +12,38 @@ except LookupError:
 
 from services.ai100_client import analyze_text
 from services.finnhub_client import get_company_news, get_market_news
+from services.supabase_client import SupabaseClient
 
 # ... (imports)
 
 class NewsProcessor:
     def __init__(self):
-        # In-memory deduplication storage (hash set)
-        self.seen_urls = set()
+        self.supabase = SupabaseClient()
 
     def fetch_and_process_news(self, ticker: str = None, from_date: str = None, to_date: str = None):
         """
         Fetches news from Finnhub, dedupes, scrapes, and summarizes using AI100.
-        If ticker is provided, fetches company news.
-        If ticker is None, fetches general market news.
-        Returns top 5 processed news items.
+        Checks Supabase cache first.
         """
+        # 1. Try to get from Supabase first (Cache Hit)
+        # Note: This assumes we have a way to know if we have "fresh" news. 
+        # For simplicity, we will fetch from API to get latest URLs, but only process/summarize if not in DB.
         try:
             if ticker:
                 raw_news = get_company_news(ticker, from_date, to_date)
             else:
-                # Fetch general market news
                 raw_news = get_market_news("general")
         except Exception as e:
             print(f"Error fetching news (ticker={ticker}): {e}")
             return []
 
         processed_news = []
+        seen_urls = set()
         
-        # Sort by datetime desc just in case
+        # Sort by datetime desc
         raw_news.sort(key=lambda x: x.get('datetime', 0), reverse=True)
 
+        # Try to process up to 5 articles to ensure we get at least some valid ones
         for item in raw_news:
             if len(processed_news) >= 5:
                 break
@@ -50,11 +52,32 @@ class NewsProcessor:
             if not url:
                 continue
                 
-            # Deduplicate
+            # Deduplicate in-memory for this request
             url_hash = self._hash_url(url)
-            if url_hash in self.seen_urls:
+            if url_hash in seen_urls:
                 continue
-            self.seen_urls.add(url_hash)
+            seen_urls.add(url_hash)
+            
+            # 2. Check Supabase (Persistent Cache)
+            cached_article = self.supabase.get_article_by_hash(url_hash)
+            if cached_article:
+                # Cache Hit: Use stored data
+                print(f"Cache HIT for {url}")
+                processed_news.append({
+                    "headline": cached_article.get('headline'),
+                    "source": cached_article.get('source'),
+                    "url": cached_article.get('url'),
+                    "datetime": cached_article.get('datetime'),
+                    "summary": cached_article.get('summary'),
+                    "sentiment": cached_article.get('sentiment'),
+                    "tone": cached_article.get('tone'),
+                    "keywords": cached_article.get('keywords', [])
+                })
+                continue
+            
+            print(f"Cache MISS for {url}")
+
+            # 3. Cache Miss: Process and Store
             
             # Scrape content
             content = self._scrape_content(url)
@@ -64,18 +87,14 @@ class NewsProcessor:
                 content = item.get('summary', '')
             
             # Process with Qualcomm AI100
-            # We send the content to the LLM for summarization
             ai_result = analyze_text(content)
             
-            # The user requested only summaries, but we store the full analysis result
-            # The frontend can choose what to display.
-            # We ensure 'summary' is present.
             summary = ai_result.get('summary', '')
             if not summary:
-                 # Fallback if AI100 returns empty summary
                  summary = content[:300] + "..." if len(content) > 300 else content
 
-            processed_news.append({
+            article_data = {
+                "url_hash": url_hash,
                 "headline": item.get('headline'),
                 "source": item.get('source'),
                 "url": url,
@@ -83,8 +102,14 @@ class NewsProcessor:
                 "summary": summary,
                 "sentiment": ai_result.get('sentiment', 'neutral'),
                 "tone": ai_result.get('tone', 'neutral'),
-                "keywords": ai_result.get('keywords', [])
-            })
+                "keywords": ai_result.get('keywords', []),
+                "ticker": ticker if ticker else "Market"
+            }
+            
+            # Save to Supabase
+            self.supabase.save_article(article_data)
+
+            processed_news.append(article_data)
             
         return processed_news
 
@@ -101,7 +126,13 @@ class NewsProcessor:
         Uses newspaper3k to scrape article text.
         """
         try:
-            article = Article(url)
+            # Set a timeout for download
+            from newspaper import Config
+            config = Config()
+            config.browser_user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36'
+            config.request_timeout = 10
+
+            article = Article(url, config=config)
             article.download()
             article.parse()
             return article.text
