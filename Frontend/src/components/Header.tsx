@@ -27,17 +27,6 @@ const Header: React.FC<HeaderProps> = () => {
                 </div>
               </Link>
             </div>
-          <div className="flex items-center gap-3">
-            <Link to="/" className="flex items-center gap-3">
-              <img 
-                src="/Qualcomm.png" 
-                alt="Qualcomm Logo" 
-                className="h-8 w-auto"
-              />
-              <div className="text-text-primary font-semibold text-lg">
-                Financial Insights Engine
-              </div>
-            </Link>
           </div>
 
           {/* Navigation */}
