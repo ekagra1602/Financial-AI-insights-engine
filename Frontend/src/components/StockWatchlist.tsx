@@ -17,10 +17,6 @@ const StockWatchlist: React.FC = () => {
   const [newSymbol, setNewSymbol] = useState('');
   const [searchResults, setSearchResults] = useState<StockSymbol[]>([]);
   const searchTimeout = useRef<NodeJS.Timeout>();
-  const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({
-    'options-watchlist': false,
-    'my-first-list': false,
-  });
 
   useEffect(() => {
     // Only fetch if we don't have cached data and aren't currently fetching
@@ -107,7 +103,7 @@ const StockWatchlist: React.FC = () => {
         sparklineData: [], // Placeholder
       };
 
-      const updatedStocks = [...stocks, newStock];
+      const updatedStocks = [newStock, ...stocks];
       setStocks(updatedStocks);
       cachedStocks = updatedStocks;
       setIsAdding(false);
@@ -128,13 +124,6 @@ const StockWatchlist: React.FC = () => {
     const updatedStocks = stocks.filter(s => s.symbol !== symbolToRemove);
     setStocks(updatedStocks);
     cachedStocks = updatedStocks;
-  };
-
-  const toggleList = (listId: string) => {
-    setExpandedLists((prev) => ({
-      ...prev,
-      [listId]: !prev[listId],
-    }));
   };
 
   const StockItem: React.FC<{ stock: StockData }> = ({ stock }) => {
@@ -179,22 +168,7 @@ const StockWatchlist: React.FC = () => {
   return (
     <div className="bg-surface rounded-xl p-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-text-primary">Stocks</h2>
-      </div>
-
-      {/* User's stocks */}
-      <div className="mb-6">
-        {stocks
-          .filter((stock) => stock.shares)
-          .map((stock) => (
-            <StockItem key={stock.symbol} stock={stock} />
-          ))}
-      </div>
-
-      {/* Lists section */}
-      <div className="border-t border-border pt-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-semibold text-text-primary">Lists</h3>
+        <h3 className="text-lg font-semibold text-text-primary">Watchlist</h3>
         <button 
           onClick={() => setIsAdding(!isAdding)}
           className={`text-text-secondary hover:text-text-primary transition-colors ${isAdding ? 'text-primary' : ''}`}
@@ -231,50 +205,10 @@ const StockWatchlist: React.FC = () => {
         </div>
       )}
 
-      {/* Options Watchlist */}
-        <div className="mb-3">
-          <button
-            onClick={() => toggleList('options-watchlist')}
-            className="w-full flex items-center justify-between py-2 hover:bg-surface-light px-3 -mx-3 rounded-lg transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Eye className="w-4 h-4 text-text-secondary" />
-              <span className="text-text-primary">Options Watchlist</span>
-            </div>
-            {expandedLists['options-watchlist'] ? (
-              <ChevronUp className="w-4 h-4 text-text-secondary" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-text-secondary" />
-            )}
-          </button>
-        </div>
-
-        {/* My First List */}
-        <div className="mb-4">
-          <button
-            onClick={() => toggleList('my-first-list')}
-            className="w-full flex items-center justify-between py-2 hover:bg-surface-light px-3 -mx-3 rounded-lg transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-text-secondary" />
-              <span className="text-text-primary">My First List</span>
-            </div>
-            {expandedLists['my-first-list'] ? (
-              <ChevronUp className="w-4 h-4 text-text-secondary" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-text-secondary" />
-            )}
-          </button>
-        </div>
-
-        {/* Watchlist stocks */}
-        <div className="border-t border-border pt-3">
-          {stocks
-            .filter((stock) => !stock.shares)
-            .map((stock) => (
-              <StockItem key={stock.symbol} stock={stock} />
-            ))}
-        </div>
+      <div className="space-y-1">
+        {stocks.map((stock) => (
+          <StockItem key={stock.symbol} stock={stock} />
+        ))}
       </div>
     </div>
   );
