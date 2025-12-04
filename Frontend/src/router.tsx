@@ -6,6 +6,7 @@ import { ChatbotPage } from './pages/ChatbotPage';
 import { StockDetailPage } from './pages/StockDetailPage';
 import { RootLayout } from './layouts/RootLayout';
 import WebSearch from './components/WebSearch';
+import SentimentPage from './pages/SentimentPage';
 
 // Create the router with routes
 const router = createBrowserRouter([
@@ -36,6 +37,10 @@ const router = createBrowserRouter([
       {
         path: '/news/:ticker',
         element: <NewsPage />
+      },
+      {
+        path: '/sentiment-reports',
+        element: <SentimentPage />
       }
     ]
   }

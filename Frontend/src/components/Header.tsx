@@ -2,9 +2,13 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Search, Bell, MessageSquare, TrendingUp, Home, Newspaper } from 'lucide-react';
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  onSearch?: (ticker: string) => void;
+}
+
+const Header: React.FC<HeaderProps> = () => {
   const location = useLocation();
-  
+
   return (
     <header className="bg-surface border-b border-border sticky top-0 z-50">
       <div className="max-w-[1920px] mx-auto px-6 py-4">
@@ -23,6 +27,17 @@ const Header: React.FC = () => {
                 </div>
               </Link>
             </div>
+          <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3">
+              <img 
+                src="/Qualcomm.png" 
+                alt="Qualcomm Logo" 
+                className="h-8 w-auto"
+              />
+              <div className="text-text-primary font-semibold text-lg">
+                Financial Insights Engine
+              </div>
+            </Link>
           </div>
 
           {/* Navigation */}
@@ -52,8 +67,8 @@ const Header: React.FC = () => {
             </Link>
 
             <Link
-              to="#"
-              className="flex items-center gap-2 text-text-primary hover:text-primary transition-colors"
+              to="/sentiment-reports"
+              className={`flex items-center gap-2 ${location.pathname.includes('/sentiment-reports') ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}
             >
               <TrendingUp className="w-5 h-5" />
               <span>Insights</span>
