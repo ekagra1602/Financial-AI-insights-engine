@@ -1,8 +1,9 @@
 // Router configuration
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import App from './App';
 import { NewsPage } from './pages/NewsPage';
 import { ChatbotPage } from './pages/ChatbotPage';
+import { StockDetailPage } from './pages/StockDetailPage';
 import { RootLayout } from './layouts/RootLayout';
 import WebSearch from './components/WebSearch';
 import SentimentPage from './pages/SentimentPage';
@@ -14,7 +15,11 @@ const router = createBrowserRouter([
     children: [
       {
         path: '/',
-        element: <App />
+        element: <Navigate to="/stock/ORCL" replace />
+      },
+      {
+        path: '/stock/:symbol',
+        element: <StockDetailPage />
       },
       {
         path: '/web-search',

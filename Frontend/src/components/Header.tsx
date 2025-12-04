@@ -14,6 +14,19 @@ const Header: React.FC<HeaderProps> = () => {
       <div className="max-w-[1920px] mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-3">
+              <Link to="/stock/ORCL" className="flex items-center gap-3">
+                <img 
+                  src="/Qualcomm.png" 
+                  alt="Qualcomm Logo" 
+                  className="h-8 w-auto"
+                />
+                <div className="text-text-primary font-semibold text-lg">
+                  Financial Insights Engine
+                </div>
+              </Link>
+            </div>
           <div className="flex items-center gap-3">
             <Link to="/" className="flex items-center gap-3">
               <img 
@@ -30,8 +43,8 @@ const Header: React.FC<HeaderProps> = () => {
           {/* Navigation */}
           <nav className="flex items-center gap-6">
             <Link
-              to="/"
-              className={`flex items-center gap-2 ${location.pathname === '/' ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}
+              to="/stock/ORCL"
+              className={`flex items-center gap-2 ${location.pathname.includes('/stock') ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}
             >
               <Home className="w-5 h-5" />
               <span>Dashboard</span>
