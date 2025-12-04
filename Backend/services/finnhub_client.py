@@ -45,6 +45,30 @@ def get_finnhub_search(query: str):
         raise HTTPException(status_code=response.status_code, detail="Failed to search stocks")
     return response.json()
 
+def get_company_news(symbol: str, from_date: str, to_date: str):
+    url = f"{FINNHUB_BASE_URL}/company-news"
+    params = {
+        "symbol": symbol,
+        "from": from_date,
+        "to": to_date,
+        "token": FINNHUB_API_KEY
+    }
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch company news")
+    return response.json()
+
+def get_market_news(category: str = "general"):
+    url = f"{FINNHUB_BASE_URL}/news"
+    params = {
+        "category": category,
+        "token": FINNHUB_API_KEY
+    }
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch market news")
+    return response.json()
+
 @router.get("/search")
 async def search_stocks(q: str = Query(..., description="Search query")):
     if not FINNHUB_API_KEY:
