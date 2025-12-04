@@ -7,11 +7,29 @@ import { RelatedArticles } from '../components/news/RelatedArticles';
 import { summarizedNewsArticles, relatedArticles } from '../data/newsData';
 import { stockWatchlist } from '../data/demoData';
 import { SummarizedNewsArticle, RelatedArticle, StockData } from '../types';
+import { fetchCompanyNews, fetchMarketNews } from '../services/api';
+
+// ... (imports)
+
+// ... (helper functions)
 
 // Define the type for route parameters
 type NewsPageParams = {
   ticker?: string;
 }
+
+// Helper to format timestamp to "Xh ago"
+const formatTimeAgo = (timestamp: number) => {
+  const seconds = Math.floor((Date.now() - timestamp * 1000) / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return 'Just now';
+};
 
 export const NewsPage: React.FC = () => {
   const { ticker } = useParams<NewsPageParams>();
@@ -33,88 +51,88 @@ export const NewsPage: React.FC = () => {
     setWatchlistStocks(stocks);
     
     // Set available tickers (tickers that have news)
-    const tickers = Object.keys(summarizedNewsArticles);
+    const tickers = stocks.map(s => s.symbol);
     setAvailableTickers(tickers);
     
-    // By default, select all tickers that have news
-    setSelectedTickers(tickers);
+    // By default, DO NOT select all tickers. We want to show general news first.
+    // Only if a specific ticker is in URL, we might want to select it (handled in fetch logic)
+    setSelectedTickers([]);
   }, []);
   
   // Fetch news data based on selected tickers
-  const fetchNewsArticles = () => {
+  const fetchNewsArticles = async () => {
     setLoading(true);
     setError(null);
     
-    // Short delay to show loading state
-    setTimeout(() => {
-      try {
+    try {
         let articles: SummarizedNewsArticle[] = [];
         
-        // If specific ticker is in URL, show only that ticker's news
+        // If specific ticker is in URL, use that.
         if (ticker) {
-          articles = summarizedNewsArticles[ticker] || [];
-          
-          if (articles.length === 0) {
-            setError(`No news articles available for ${ticker} yet.`);
-          }
-          
-        } else if (selectedTickers.length > 0) {
-          // If tickers are selected, filter news by those tickers
-          selectedTickers.forEach(tick => {
-            // Only add articles if ticker exists in summarizedNewsArticles
-            if (summarizedNewsArticles[tick]) {
-              articles.push(...summarizedNewsArticles[tick]);
-            }
-          });
-          
-          // Sort by recency
-          articles = sortArticlesByRecency(articles);
-          
-          if (articles.length === 0) {
-            setError('No news articles available for selected companies.');
-          }
-          
-        } else {
-          // If no tickers selected, show no news
-          articles = [];
-          setError('No companies selected. Please select at least one company to view news.');
+             const newsList = await fetchCompanyNews(ticker);
+             articles = mapNewsResponse(newsList, ticker);
+        } 
+        // If tickers are selected in filter, fetch for them
+        else if (selectedTickers.length > 0) {
+            // We use map with internal try/catch to ensure one failure doesn't break all
+            const promises = selectedTickers.map(async (t) => {
+                try {
+                    const data = await fetchCompanyNews(t);
+                    return { status: 'fulfilled', value: data, ticker: t };
+                } catch (e) {
+                    console.error(`Failed to fetch news for ${t}`, e);
+                    return { status: 'rejected', reason: e, ticker: t };
+                }
+            });
+            
+            const results = await Promise.all(promises);
+            
+            results.forEach((result: any) => {
+                if (result.status === 'fulfilled') {
+                    const tick = result.ticker;
+                    articles.push(...mapNewsResponse(result.value, tick));
+                }
+            });
+        } 
+        // If NO tickers selected, fetch general market news
+        else {
+            const newsList = await fetchMarketNews();
+            // Market news might not have a specific ticker, or might have 'market'
+            articles = mapNewsResponse(newsList, 'Market');
         }
-        
+
+        // Sort by recency
+        articles.sort((a: any, b: any) => b.rawDatetime - a.rawDatetime);
+
+        if (articles.length === 0) {
+            setError('No news articles available.');
+        }
+
         setNewsArticles(articles);
         setLastUpdated('Just now');
-      } catch (err) {
+
+    } catch (err) {
+        console.error(err);
         setError('Failed to load news articles. Please try again.');
-      } finally {
+    } finally {
         setLoading(false);
-      }
-    }, 300);
+    }
   };
-  
-  // Helper function to sort articles by recency
-  const sortArticlesByRecency = (articles: SummarizedNewsArticle[]) => {
-    return [...articles].sort((a, b) => {
-      // Extract time value from "Xh ago" or "Xd ago" format
-      const getTimeValue = (timeStr: string) => {
-        const match = timeStr.match(/^(\d+)([hmd])/);
-        if (!match) return 9999; // Default high value for unknown format
-        
-        const [_, value, unit] = match;
-        const numValue = parseInt(value);
-        
-        // Convert to hours for comparison
-        switch(unit) {
-          case 'm': return numValue / 60; // minutes to hours
-          case 'h': return numValue;      // already in hours
-          case 'd': return numValue * 24; // days to hours
-          default: return 9999;
-        }
-      };
-      
-      const aTime = getTimeValue(a.publishedTime);
-      const bTime = getTimeValue(b.publishedTime);
-      
-      return aTime - bTime; // Sort ascending (smaller/more recent first)
-    });
+
+  const mapNewsResponse = (newsList: any[], tickerLabel: string): SummarizedNewsArticle[] => {
+      return newsList.map((item: any, idx: number) => ({
+        id: `${tickerLabel}-${item.datetime}-${idx}`,
+        headline: item.headline,
+        summary: item.summary,
+        source: item.source,
+        url: item.url,
+        publishedTime: formatTimeAgo(item.datetime),
+        sentiment: 'neutral' as const,
+        tone: 'neutral' as const,
+        keywords: [],
+        ticker: tickerLabel,
+        rawDatetime: item.datetime
+    }));
   };
   
   // Generate related articles based on keywords

@@ -13,8 +13,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from routers.news import router as news_router
+
 # Include routers
 app.include_router(finnhub_router, prefix="/api/v1")
+app.include_router(news_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
