@@ -82,3 +82,10 @@ export interface KeyStatistics {
   finnhubIndustry?: string;
 }
 
+export interface StockSymbol {
+  description: string;
+  displaySymbol: string;
+  symbol: string;
+  type: string;
+}
+

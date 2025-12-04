@@ -37,6 +37,23 @@ def get_finnhub_profile(symbol: str):
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch profile data")
     return response.json()
 
+def get_finnhub_search(query: str):
+    url = f"{FINNHUB_BASE_URL}/search"
+    params = {"q": query, "token": FINNHUB_API_KEY}
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to search stocks")
+    return response.json()
+
+@router.get("/search")
+async def search_stocks(q: str = Query(..., description="Search query")):
+    if not FINNHUB_API_KEY:
+        raise HTTPException(status_code=500, detail="API Key not configured")
+    try:
+        return get_finnhub_search(q)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/quote", response_model=KeyStatistics)
 async def get_key_statistics(symbol: str = Query(..., description="Stock symbol")):
     if not FINNHUB_API_KEY:

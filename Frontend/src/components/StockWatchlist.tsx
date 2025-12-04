@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, Eye, Zap, Plus } from 'lucide-react';
-import { StockData } from '../types';
+import { ChevronDown, ChevronUp, Eye, Zap, Plus, X } from 'lucide-react';
+import { StockData, StockSymbol } from '../types';
 import { stockWatchlist } from '../data/demoData';
-import { fetchKeyStatistics } from '../services/api';
+import { fetchKeyStatistics, searchStocks } from '../services/api';
 import Sparkline from './Sparkline';
 
 // Cache for stock data to prevent re-fetching on navigation
@@ -15,6 +15,8 @@ const StockWatchlist: React.FC = () => {
   const [stocks, setStocks] = useState<StockData[]>(cachedStocks || stockWatchlist);
   const [isAdding, setIsAdding] = useState(false);
   const [newSymbol, setNewSymbol] = useState('');
+  const [searchResults, setSearchResults] = useState<StockSymbol[]>([]);
+  const searchTimeout = useRef<NodeJS.Timeout>();
   const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({
     'options-watchlist': false,
     'my-first-list': false,
@@ -60,38 +62,72 @@ const StockWatchlist: React.FC = () => {
     fetchStockData();
   }, []);
 
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewSymbol(value);
+
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
+    }
+
+    if (value.length > 1) {
+      searchTimeout.current = setTimeout(async () => {
+        const results = await searchStocks(value);
+        setSearchResults(results.result.slice(0, 5)); // Limit to 5 results
+      }, 300);
+    } else {
+      setSearchResults([]);
+    }
+  };
+
+  const selectStock = (symbol: string) => {
+    setNewSymbol(symbol);
+    setSearchResults([]);
+    addStock(symbol);
+  };
+
+  const addStock = async (symbolInput: string) => {
+    const symbol = symbolInput.toUpperCase();
+    
+    // Check if already exists
+    if (stocks.some(s => s.symbol === symbol)) {
+      setIsAdding(false);
+      setNewSymbol('');
+      return;
+    }
+
+    try {
+      const stats = await fetchKeyStatistics(symbol);
+      
+      const newStock: StockData = {
+        symbol: symbol,
+        price: stats.current_price || 0,
+        change: (stats.current_price && stats.prev_close_price) ? stats.current_price - stats.prev_close_price : 0,
+        changePercent: (stats.current_price && stats.prev_close_price) ? ((stats.current_price - stats.prev_close_price) / stats.prev_close_price) * 100 : 0,
+        sparklineData: [], // Placeholder
+      };
+
+      const updatedStocks = [...stocks, newStock];
+      setStocks(updatedStocks);
+      cachedStocks = updatedStocks;
+      setIsAdding(false);
+      setNewSymbol('');
+    } catch (error) {
+      console.error("Invalid stock symbol");
+    }
+  };
+
   const handleAddStock = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && newSymbol) {
-      const symbol = newSymbol.toUpperCase();
-      
-      // Check if already exists
-      if (stocks.some(s => s.symbol === symbol)) {
-        setIsAdding(false);
-        setNewSymbol('');
-        return;
-      }
-
-      try {
-        const stats = await fetchKeyStatistics(symbol);
-        
-        const newStock: StockData = {
-          symbol: symbol,
-          price: stats.current_price || 0,
-          change: (stats.current_price && stats.prev_close_price) ? stats.current_price - stats.prev_close_price : 0,
-          changePercent: (stats.current_price && stats.prev_close_price) ? ((stats.current_price - stats.prev_close_price) / stats.prev_close_price) * 100 : 0,
-          sparklineData: [], // Placeholder
-        };
-
-        const updatedStocks = [...stocks, newStock];
-        setStocks(updatedStocks);
-        cachedStocks = updatedStocks;
-        setIsAdding(false);
-        setNewSymbol('');
-      } catch (error) {
-        console.error("Invalid stock symbol");
-        // In a real app, show an error toast
-      }
+      addStock(newSymbol);
     }
+  };
+
+  const removeStock = (symbolToRemove: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent navigation
+    const updatedStocks = stocks.filter(s => s.symbol !== symbolToRemove);
+    setStocks(updatedStocks);
+    cachedStocks = updatedStocks;
   };
 
   const toggleList = (listId: string) => {
@@ -107,8 +143,8 @@ const StockWatchlist: React.FC = () => {
 
     return (
       <div
+        className="group relative flex items-center justify-between py-3 hover:bg-surface-light px-3 -mx-3 rounded-lg transition-colors cursor-pointer"
         onClick={() => navigate(`/stock/${stock.symbol}`)}
-        className="flex items-center justify-between py-3 hover:bg-surface-light px-3 -mx-3 rounded-lg transition-colors cursor-pointer"
       >
         <div className="flex-1">
           <div className="font-semibold text-text-primary">{stock.symbol}</div>
@@ -127,6 +163,15 @@ const StockWatchlist: React.FC = () => {
             </div>
           </div>
         </div>
+        {!stock.shares && (
+          <button
+            onClick={(e) => removeStock(stock.symbol, e)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-surface text-text-secondary hover:text-negative opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+            title="Remove from watchlist"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
     );
   };
@@ -159,16 +204,30 @@ const StockWatchlist: React.FC = () => {
       </div>
 
       {isAdding && (
-        <div className="mb-4 px-1">
+        <div className="mb-4 px-1 relative">
           <input
             autoFocus
             type="text"
             value={newSymbol}
-            onChange={(e) => setNewSymbol(e.target.value)}
+            onChange={handleSearchChange}
             onKeyDown={handleAddStock}
             placeholder="Symbol (e.g. MSFT)"
             className="w-full bg-background border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-primary placeholder-text-secondary"
           />
+          {searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+              {searchResults.map((result) => (
+                <div
+                  key={result.symbol}
+                  onClick={() => selectStock(result.symbol)}
+                  className="px-3 py-2 hover:bg-surface-light cursor-pointer text-sm border-b border-border last:border-0"
+                >
+                  <div className="font-bold text-text-primary">{result.symbol}</div>
+                  <div className="text-text-secondary truncate">{result.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
