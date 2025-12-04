@@ -142,6 +142,13 @@ The application comes with comprehensive demo data including:
 git clone <repository-url>
 cd qualcomm-financial-insights-engine
 
+# Quick Start (Recommended)
+# This script installs dependencies and starts both frontend and backend
+./start.sh
+```
+
+### Manual Installation (Alternative)
+```bash
 # Install frontend dependencies
 cd Frontend
 npm install
