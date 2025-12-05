@@ -26,8 +26,18 @@ class NewsProcessor:
         Checks Supabase cache first.
         """
         # 1. Try to get from Supabase first (Cache Hit)
-        # Note: This assumes we have a way to know if we have "fresh" news. 
-        # For simplicity, we will fetch from API to get latest URLs, but only process/summarize if not in DB.
+        # Check if we have recent news in DB matching the criteria
+        try:
+            # We use a limit of 5 as per original logic
+            db_news = self.supabase.get_recent_articles(ticker, limit=5, from_date=from_date)
+            if db_news and len(db_news) > 0:
+                print(f"Cache HIT for ticker {ticker}: Found {len(db_news)} articles in DB.")
+                return db_news
+        except Exception as e:
+            print(f"Error checking DB cache: {e}")
+
+        # 2. Cache Miss or insufficient data: Fetch from API
+        print(f"Cache MISS for ticker {ticker}: Fetching from API...")
         try:
             if ticker:
                 raw_news = get_company_news(ticker, from_date, to_date)
@@ -58,26 +68,26 @@ class NewsProcessor:
                 continue
             seen_urls.add(url_hash)
             
-            # 2. Check Supabase (Persistent Cache)
+            # Check if this specific article is already in DB (to avoid re-processing)
+            # Even though we checked DB for *any* articles above, we might have missed this specific one
+            # if we are in a "partial cache" state or if we decided to re-fetch for some reason.
+            # However, with the new logic, if we found ANY articles above, we returned.
+            # So if we are here, it means we found NO articles in DB (or error).
+            # So we probably don't need to check DB again for each article, 
+            # UNLESS the DB check above failed or returned 0 but some articles actually exist 
+            # (e.g. from_date mismatch).
+            # But let's keep the check to be safe and avoid duplicates if we are backfilling.
+            
             cached_article = self.supabase.get_article_by_hash(url_hash)
             if cached_article:
                 # Cache Hit: Use stored data
-                print(f"Cache HIT for {url}")
-                processed_news.append({
-                    "headline": cached_article.get('headline'),
-                    "source": cached_article.get('source'),
-                    "url": cached_article.get('url'),
-                    "datetime": cached_article.get('datetime'),
-                    "summary": cached_article.get('summary'),
-                    "sentiment": cached_article.get('sentiment'),
-                    "tone": cached_article.get('tone'),
-                    "keywords": cached_article.get('keywords', [])
-                })
+                print(f"Article Cache HIT for {url}")
+                processed_news.append(cached_article)
                 continue
             
-            print(f"Cache MISS for {url}")
+            print(f"Processing new article: {url}")
 
-            # 3. Cache Miss: Process and Store
+            # 3. Process and Store
             
             # Scrape content
             content = self._scrape_content(url)
@@ -117,8 +127,8 @@ class NewsProcessor:
         """
         Standardizes URL and returns SHA256 hash.
         """
-        # Lowercase and remove query parameters for basic canonicalization
-        clean_url = url.lower().split('?')[0]
+        # Lowercase but KEEP query parameters as they are essential for some URLs (e.g. Finnhub IDs)
+        clean_url = url.lower().strip()
         return hashlib.sha256(clean_url.encode('utf-8')).hexdigest()
 
     def _scrape_content(self, url: str) -> str:

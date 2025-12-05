@@ -47,7 +47,7 @@ class SupabaseClient:
         except Exception as e:
             print(f"Error saving article to Supabase: {e}")
 
-    def get_recent_articles(self, ticker: str, limit: int = 5) -> list:
+    def get_recent_articles(self, ticker: str = None, limit: int = 5, from_date: str = None) -> list:
         """
         Get recent articles for a ticker from DB.
         """
@@ -55,16 +55,31 @@ class SupabaseClient:
             return []
             
         try:
-            # If ticker is 'Market' or None, we might want general news
             query = self.client.table("news_articles").select("*").order("datetime", desc=True).limit(limit)
             
             if ticker and ticker != "Market":
-                # We need to filter by ticker. 
-                # Since our schema might store keywords or we might add a ticker column.
-                # For now, let's assume we add a 'ticker' column or filter by keywords containing ticker.
-                # Simpler: add 'ticker' column to the table.
                 query = query.eq("ticker", ticker)
-                
+            else:
+                # If ticker is None or "Market", fetch general market news
+                query = query.eq("ticker", "Market")
+            
+            if from_date:
+                # Convert from_date (YYYY-MM-DD) to Unix timestamp
+                try:
+                    dt = datetime.datetime.strptime(from_date, "%Y-%m-%d")
+                    # Ensure we compare with timestamp (seconds)
+                    timestamp = int(dt.timestamp())
+                    query = query.gte("datetime", timestamp)
+                except ValueError:
+                    # If format is wrong, ignore or handle. 
+                    # Try ISO format just in case it includes time
+                    try:
+                        dt = datetime.datetime.fromisoformat(from_date)
+                        timestamp = int(dt.timestamp())
+                        query = query.gte("datetime", timestamp)
+                    except ValueError:
+                        print(f"Invalid date format for from_date: {from_date}")
+
             response = query.execute()
             return response.data
         except Exception as e:
