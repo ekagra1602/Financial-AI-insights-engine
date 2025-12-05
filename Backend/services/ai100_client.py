@@ -73,17 +73,45 @@ def analyze_text(text: str):
         print(f"Error calling AI100 API: {e}")
         return _mock_response(text)
 
-def _mock_response(text: str):
-    """
-    Fallback mock response if API is unavailable.
-    """
-    summary = text[:300].strip()
-    if len(text) > 300:
-        summary += "..."
-        
     return {
         "summary": summary,
         "sentiment": "neutral",
         "tone": "neutral",
         "keywords": ["Mock", "Data"]
     }
+
+def get_chat_response(message: str):
+    """
+    Sends a general chat message to Qualcomm AI100.
+    """
+    if not AI100_API_KEY:
+        return "I'm sorry, but I can't answer that right now because my AI brain (API Key) is missing."
+
+    url = f"{AI100_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {AI100_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": AI100_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a friendly and wise financial mentor. Your goal is to give clear, actionable advice that feels like a conversation. \n\nStyle Guide:\n- Start with a friendly hook or direct answer, maybe an emoji.\n- Use **Markdown** for formatting.\n- Use numbered headers (e.g., `### 1. Step Name`) for main points.\n- Use bold text for key concepts.\n- Use bullet points for details.\n- Use horizontal rules (`---`) to separate major sections.\n- Keep the tone encouraging but realistic.\n- If the user asks about investing, focus on safety and basics first."},
+            {"role": "user", "content": message}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 600
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        if response.status_code != 200:
+            return f"Error: Unable to reach AI service ({response.status_code})"
+            
+        data = response.json()
+        return data['choices'][0]['message']['content']
+        
+    except Exception as e:
+        print(f"Error calling AI100 API: {e}")
+        return "I'm having trouble connecting to the AI service right now."
