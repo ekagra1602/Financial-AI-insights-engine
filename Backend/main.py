@@ -50,6 +50,12 @@ except Exception as e:
     print(f"Warning: news router not loaded ({e}). Install sentence-transformers etc. for news.")
 
 try:
+    from routers.chat import router as chat_router
+    app.include_router(chat_router, prefix="/api/v1")
+except Exception as e:
+    print(f"Warning: chat router not loaded ({e})")
+
+try:
     from routers.stock_data import router as stock_router
     app.include_router(stock_router, prefix="/api/v1")
 except Exception as e:
