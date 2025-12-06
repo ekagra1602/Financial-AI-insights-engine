@@ -8,9 +8,7 @@ const SentimentPage = () => {
 
   useEffect(() => {
     const tickerParam = searchParams.get('ticker');
-    if (tickerParam) {
-      setTicker(tickerParam.toUpperCase());
-    }
+    setTicker(tickerParam ? tickerParam.toUpperCase() : null);
   }, [searchParams]);
 
   return <SentimentContainer ticker={ticker} />;
