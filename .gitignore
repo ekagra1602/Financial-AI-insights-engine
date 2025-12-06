@@ -14,6 +14,20 @@ Backend/__pycache__/
 !readme.md
 !Readme.md
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+
 # Dependencies
 node_modules/
 package-lock.json
