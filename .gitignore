@@ -1,7 +1,7 @@
 # Markdown documentation files (keep only root Readme.md and Backend/README.md)
-
 *.md
 !/Readme.md
+!/Backend/README.md
 
 # Python
 __pycache__/
