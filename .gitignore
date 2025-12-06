@@ -14,6 +14,14 @@ Backend/__pycache__/
 !readme.md
 !Readme.md
 
+# Specific markdown files to ignore (from Frontend)
+CHANGELOG.md
+FEATURES.md
+FILE_STRUCTURE.md
+INSTALL.md
+UPDATE_SUMMARY.md
+QUICKSTART.md
+
 # Python
 __pycache__/
 *.py[cod]
@@ -34,6 +42,7 @@ package-lock.json
 
 # Build output
 dist/
+dist-ssr/
 build/
 .vite/
 
@@ -45,16 +54,22 @@ build/
 .env.production.local
 
 # IDE & Editor files
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
+*.sw?
 *~
 .project
 .classpath
 .settings/
 *.sublime-project
 *.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # OS-specific files
 .DS_Store
