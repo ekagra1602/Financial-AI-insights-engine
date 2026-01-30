@@ -5,17 +5,16 @@ import PortfolioChart from '../components/PortfolioChart';
 import StockAbout from '../components/StockAbout';
 import KeyStatistics from '../components/KeyStatistics';
 import RelatedLists from '../components/RelatedLists';
-import NewsSection from '../components/NewsSection';
-import TradingTrends from '../components/TradingTrends';
+
 import StockWatchlist from '../components/StockWatchlist';
-import { featuredStock, stockNewsArticles, tradingTrendsData } from '../data/demoData';
+import { featuredStock } from '../data/demoData';
 import { fetchKeyStatistics } from '../services/api';
 import { KeyStatistics as KeyStatisticsType } from '../types';
 
 // Cache to store stock details
 const stockCache: Record<string, KeyStatisticsType> = {};
 // Track active fetches to prevent duplicates
-const activeFetches: Record<string, Promise<KeyStatisticsType>> = {};
+const activeFetches: Record<string, Promise<KeyStatisticsType> | undefined> = {};
 
 export const StockDetailPage: React.FC = () => {
     const { symbol } = useParams<{ symbol: string }>();
@@ -113,13 +112,7 @@ export const StockDetailPage: React.FC = () => {
 
                     <RelatedLists />
 
-                    <NewsSection articles={stockNewsArticles} />
 
-                    <TradingTrends
-                        data={tradingTrendsData}
-                        changePercent={-0.04}
-                        lastUpdated="Nov 5"
-                    />
                 </div>
 
                 {/* Sidebar - Stock Watchlist */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, Eye, Zap, Plus, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { StockData, StockSymbol } from '../types';
 import { stockWatchlist } from '../data/demoData';
 import { fetchKeyStatistics, searchStocks } from '../services/api';
@@ -16,7 +16,7 @@ const StockWatchlist: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [newSymbol, setNewSymbol] = useState('');
   const [searchResults, setSearchResults] = useState<StockSymbol[]>([]);
-  const searchTimeout = useRef<NodeJS.Timeout>();
+  const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     // Only fetch if we don't have cached data and aren't currently fetching

@@ -1,6 +1,6 @@
 // Router configuration
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import App from './App';
+
 import { NewsPage } from './pages/NewsPage';
 import { ChatbotPage } from './pages/ChatbotPage';
 import { StockDetailPage } from './pages/StockDetailPage';

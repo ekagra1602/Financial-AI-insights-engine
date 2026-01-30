@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 import {
   stockWatchlist,
@@ -64,9 +64,7 @@ const WebSearch: React.FC = () => {
   const [eli5, setEli5] = useState(false);
   // no local ref needed currently
 
-  useEffect(() => {
-    setRecent(loadRecent());
-  }, []);
+
 
   // fetch wiki suggestions + stock symbol suggestions
   const fetchSuggestions = async (q: string) => {
@@ -156,7 +154,7 @@ const WebSearch: React.FC = () => {
             news.push({ id: 'wiki', source: 'Wikipedia', timeAgo: '', title: titles[0], excerpt: json.extract });
           }
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     }

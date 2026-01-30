@@ -29,8 +29,8 @@ export interface SummarizedNewsArticle {
   source: string;
   publishedTime: string;
   summary: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
-  tone: 'bullish' | 'bearish' | 'neutral';
+  sentiment: "positive" | "negative" | "neutral";
+  tone: "bullish" | "bearish" | "neutral";
   keywords: string[];
   url: string;
   ticker: string;
@@ -41,7 +41,7 @@ export interface RelatedArticle {
   headline: string;
   source: string;
   publishedTime: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
+  sentiment: "positive" | "negative" | "neutral";
   url: string;
   relationContext?: string;
 }
@@ -53,7 +53,7 @@ export interface DailyMover {
   changePercent: number;
 }
 
-export type TimePeriod = '1D' | '1W' | '1M' | '3M' | 'YTD' | '1Y' | 'ALL';
+export type TimePeriod = "1D" | "1W" | "1M" | "3M" | "YTD" | "1Y" | "ALL";
 
 export interface KeyStatistics {
   market_cap: number | null;
@@ -87,9 +87,11 @@ export interface StockSymbol {
   displaySymbol: string;
   symbol: string;
   type: string;
+}
+
 // Sentiment Report Types
-export type ForecastHorizon = '1D' | '1W' | '1M' | '3M' | '6M';
-export type Stance = 'bullish' | 'neutral' | 'bearish';
+export type ForecastHorizon = "1D" | "1W" | "1M" | "3M" | "6M";
+export type Stance = "bullish" | "neutral" | "bearish";
 
 export interface ForecastQuantiles {
   q10: number;
@@ -113,7 +115,7 @@ export interface Forecast {
 
 export interface RiskFlag {
   id: string;
-  severity: 'high' | 'medium' | 'low';
+  severity: "high" | "medium" | "low";
   message: string;
 }
 
@@ -151,4 +153,3 @@ export interface RecentSearch {
   companyName: string;
   searchedAt: string;
 }
-
