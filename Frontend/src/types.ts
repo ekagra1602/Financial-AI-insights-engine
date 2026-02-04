@@ -13,6 +13,15 @@ export interface PortfolioDataPoint {
   value: number;
 }
 
+export interface StockDataPoint {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 export interface NewsArticle {
   id: string;
   source: string;
@@ -87,6 +96,7 @@ export interface StockSymbol {
   displaySymbol: string;
   symbol: string;
   type: string;
+}
 // Sentiment Report Types
 export type ForecastHorizon = '1D' | '1W' | '1M' | '3M' | '6M';
 export type Stance = 'bullish' | 'neutral' | 'bearish';
@@ -152,3 +162,10 @@ export interface RecentSearch {
   searchedAt: string;
 }
 
+
+export interface WatchlistItem {
+  symbol: string;
+  name: string;
+  price?: number;
+  change?: number;
+}

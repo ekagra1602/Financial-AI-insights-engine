@@ -65,3 +65,36 @@ export const fetchMarketNews = async () => {
     throw error;
   }
 };
+
+export const fetchStockHistory = async (symbol: string, timeframe: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history/${symbol}?timeframe=${timeframe}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch stock history');
+    }
+    const json = await response.json();
+    return json.data;
+  } catch (error) {
+    console.error('Error fetching stock history:', error);
+    throw error;
+  }
+};
+
+export const getWatchlist = async () => {
+  const res = await fetch(`${API_BASE_URL}/watchlist`);
+  return await res.json();
+};
+
+export const addToWatchlist = async (symbol: string, name: string) => {
+  await fetch(`${API_BASE_URL}/watchlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol, name })
+  });
+};
+
+export const removeFromWatchlist = async (symbol: string) => {
+  await fetch(`${API_BASE_URL}/watchlist/${symbol}`, {
+    method: 'DELETE'
+  });
+};
