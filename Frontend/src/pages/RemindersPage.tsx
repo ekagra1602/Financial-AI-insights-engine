@@ -2,8 +2,65 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Clock, Zap, Info } from 'lucide-react';
 import { ReminderInput, ReminderList, AlertsPanel } from '../components/reminders';
 import { StockReminder, ReminderAlert, ReminderCondition } from '../types';
+import { parseReminderText as apiParseReminder, ParsedReminderResponse } from '../services/api';
 
-// Demo data for MVP showcase
+// ── Company name lookup ──────────────────────────────────────────────
+const COMPANY_NAMES: Record<string, string> = {
+  AAPL: 'Apple Inc.',
+  NVDA: 'NVIDIA Corporation',
+  TSLA: 'Tesla, Inc.',
+  MSFT: 'Microsoft Corporation',
+  GOOGL: 'Alphabet Inc.',
+  AMZN: 'Amazon.com, Inc.',
+  META: 'Meta Platforms, Inc.',
+  QCOM: 'Qualcomm Incorporated',
+  AMD: 'Advanced Micro Devices, Inc.',
+  INTC: 'Intel Corporation',
+};
+
+// ── Client-side regex parser (fallback when backend is unreachable) ──
+function localParse(text: string): ParsedReminderResponse {
+  const tickerMatch = text.match(/\b([A-Z]{1,5})\b/);
+  const aboveMatch = text.match(/(?:above|over|reaches?|hits?)\s*\$?(\d+(?:\.\d{2})?)/i);
+  const belowMatch = text.match(/(?:below|under|drops?\s*(?:to)?)\s*\$?(\d+(?:\.\d{2})?)/i);
+  const pctMatch = text.match(/(\d+(?:\.\d+)?)\s*%/i);
+
+  const ticker = tickerMatch ? tickerMatch[1] : null;
+  let condition_type: ParsedReminderResponse['condition_type'] = 'custom';
+  let target_price: number | null = null;
+  let percent_change: number | null = null;
+  let action = 'Review and take action';
+
+  if (aboveMatch) {
+    condition_type = 'price_above';
+    target_price = parseFloat(aboveMatch[1]);
+    if (text.toLowerCase().includes('sell')) action = 'Consider selling';
+  } else if (belowMatch) {
+    condition_type = 'price_below';
+    target_price = parseFloat(belowMatch[1]);
+    if (text.toLowerCase().includes('buy')) action = 'Consider buying';
+  } else if (pctMatch) {
+    condition_type = 'percent_change';
+    const val = parseFloat(pctMatch[1]);
+    const neg = /drop|fall|down|lose/i.test(text);
+    percent_change = neg ? -val : val;
+  }
+
+  return {
+    ticker,
+    company_name: ticker ? (COMPANY_NAMES[ticker] ?? null) : null,
+    action,
+    condition_type,
+    target_price,
+    percent_change,
+    trigger_time: null,
+    current_price: null,
+    notes: text,
+    source: 'client_regex',
+  };
+}
+
+// ── Demo data ────────────────────────────────────────────────────────
 const DEMO_REMINDERS: StockReminder[] = [
   {
     id: '1',
@@ -11,10 +68,7 @@ const DEMO_REMINDERS: StockReminder[] = [
     ticker: 'AAPL',
     companyName: 'Apple Inc.',
     action: 'Buy shares',
-    condition: {
-      type: 'price_below',
-      targetPrice: 170.00,
-    },
+    condition: { type: 'price_below', targetPrice: 170.00 },
     status: 'active',
     createdAt: new Date(Date.now() - 86400000).toISOString(),
     currentPrice: 178.50,
@@ -25,10 +79,7 @@ const DEMO_REMINDERS: StockReminder[] = [
     ticker: 'NVDA',
     companyName: 'NVIDIA Corporation',
     action: 'Consider selling partial position',
-    condition: {
-      type: 'price_above',
-      targetPrice: 500.00,
-    },
+    condition: { type: 'price_above', targetPrice: 500.00 },
     status: 'triggered',
     createdAt: new Date(Date.now() - 172800000).toISOString(),
     triggeredAt: new Date(Date.now() - 3600000).toISOString(),
@@ -40,10 +91,7 @@ const DEMO_REMINDERS: StockReminder[] = [
     ticker: 'TSLA',
     companyName: 'Tesla, Inc.',
     action: 'Review position and consider adding',
-    condition: {
-      type: 'percent_change',
-      percentChange: -5.0,
-    },
+    condition: { type: 'percent_change', percentChange: -5.0 },
     status: 'active',
     createdAt: new Date(Date.now() - 259200000).toISOString(),
     currentPrice: 248.75,
@@ -62,77 +110,23 @@ const DEMO_ALERTS: ReminderAlert[] = [
   },
 ];
 
-/**
- * EXTRACTION LOGIC - This is the key function that parses natural language
- * 
- * Currently using REGEX-BASED PARSING (MVP approach):
- * - Extracts stock ticker using pattern: /\b([A-Z]{1,5})\b/
- * - Detects "price above" conditions: /(?:above|over|reaches?|hits?)\s*\$?(\d+)/
- * - Detects "price below" conditions: /(?:below|under|drops?)\s*\$?(\d+)/
- * - Detects percentage changes: /(\d+(?:\.\d+)?)\s*%/
- * 
- * In production, this would call an LLM API (like the AI100 endpoint) to:
- * 1. Better understand context and intent
- * 2. Handle complex/ambiguous sentences
- * 3. Extract multiple conditions from one sentence
- */
-const parseReminderText = (text: string): Partial<StockReminder> | null => {
-  // Step 1: Extract stock ticker (1-5 uppercase letters)
-  const tickerMatch = text.match(/\b([A-Z]{1,5})\b/);
-  
-  // Step 2: Look for price conditions
-  const priceAboveMatch = text.match(/(?:above|over|reaches?|hits?)\s*\$?(\d+(?:\.\d{2})?)/i);
-  const priceBelowMatch = text.match(/(?:below|under|drops?\s*(?:to)?)\s*\$?(\d+(?:\.\d{2})?)/i);
-  const percentMatch = text.match(/(\d+(?:\.\d+)?)\s*%/i);
-  
-  if (!tickerMatch) return null;
-  
-  const ticker = tickerMatch[1];
-  let condition: ReminderCondition;
-  let action = 'Review and take action';
-  
-  // Step 3: Determine condition type and extract values
-  if (priceAboveMatch) {
-    condition = {
-      type: 'price_above',
-      targetPrice: parseFloat(priceAboveMatch[1]),
-    };
-    if (text.toLowerCase().includes('sell')) {
-      action = 'Consider selling';
-    }
-  } else if (priceBelowMatch) {
-    condition = {
-      type: 'price_below',
-      targetPrice: parseFloat(priceBelowMatch[1]),
-    };
-    if (text.toLowerCase().includes('buy')) {
-      action = 'Consider buying';
-    }
-  } else if (percentMatch) {
-    const percent = parseFloat(percentMatch[1]);
-    const isNegative = text.toLowerCase().includes('drop') || 
-                       text.toLowerCase().includes('fall') || 
-                       text.toLowerCase().includes('down');
-    condition = {
-      type: 'percent_change',
-      percentChange: isNegative ? -percent : percent,
-    };
-  } else {
-    // Fallback for unrecognized patterns
-    condition = {
-      type: 'custom',
-      customCondition: text,
-    };
+// ── Helpers ──────────────────────────────────────────────────────────
+function buildConditionFromResponse(parsed: ParsedReminderResponse): ReminderCondition {
+  switch (parsed.condition_type) {
+    case 'price_above':
+      return { type: 'price_above', targetPrice: parsed.target_price ?? undefined };
+    case 'price_below':
+      return { type: 'price_below', targetPrice: parsed.target_price ?? undefined };
+    case 'percent_change':
+      return { type: 'percent_change', percentChange: parsed.percent_change ?? undefined };
+    case 'time_based':
+      return { type: 'time_based', triggerTime: parsed.trigger_time ?? undefined };
+    default:
+      return { type: 'custom', customCondition: parsed.notes ?? undefined };
   }
-  
-  return {
-    ticker,
-    action,
-    condition,
-    originalText: text,
-  };
-};
+}
 
+// ── Page Component ───────────────────────────────────────────────────
 export const RemindersPage: React.FC = () => {
   const [reminders, setReminders] = useState<StockReminder[]>(DEMO_REMINDERS);
   const [alerts, setAlerts] = useState<ReminderAlert[]>(DEMO_ALERTS);
@@ -142,38 +136,50 @@ export const RemindersPage: React.FC = () => {
   // Auto-hide toast
   useEffect(() => {
     if (showToast) {
-      const timer = setTimeout(() => setShowToast(null), 3000);
+      const timer = setTimeout(() => setShowToast(null), 4000);
       return () => clearTimeout(timer);
     }
   }, [showToast]);
 
   const handleCreateReminder = async (text: string) => {
     setIsProcessing(true);
-    
-    // Simulate API call delay (in production, this calls the backend LLM)
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    const parsed = parseReminderText(text);
-    
-    if (parsed && parsed.ticker) {
+
+    let parsed: ParsedReminderResponse;
+
+    try {
+      // Try the backend first (AI100 LLM + live Finnhub price)
+      parsed = await apiParseReminder(text);
+    } catch {
+      // Backend unreachable — fall back to client-side regex parsing
+      console.warn('Backend unavailable, using client-side parser.');
+      parsed = localParse(text);
+    }
+
+    if (parsed.ticker) {
       const newReminder: StockReminder = {
         id: Date.now().toString(),
         originalText: text,
         ticker: parsed.ticker,
-        companyName: getCompanyName(parsed.ticker),
+        companyName: parsed.company_name || COMPANY_NAMES[parsed.ticker] || undefined,
         action: parsed.action || 'Review and take action',
-        condition: parsed.condition!,
+        condition: buildConditionFromResponse(parsed),
         status: 'active',
         createdAt: new Date().toISOString(),
-        currentPrice: getRandomPrice(),
+        currentPrice: parsed.current_price ?? undefined,
+        notes: parsed.notes ?? undefined,
       };
-      
+
       setReminders((prev) => [newReminder, ...prev]);
-      setShowToast(`Reminder created for ${parsed.ticker}`);
+
+      const priceStr = parsed.current_price ? ` (live: $${parsed.current_price.toFixed(2)})` : '';
+      const sourceLabel =
+        parsed.source === 'llm' ? 'AI' :
+        parsed.source === 'regex_fallback' ? 'server fallback' : 'local';
+      setShowToast(`Reminder created for ${parsed.ticker}${priceStr} — parsed via ${sourceLabel}`);
     } else {
-      setShowToast('Could not parse reminder. Please try again with a stock ticker.');
+      setShowToast('Could not extract a stock ticker. Try: "Alert me when AAPL drops below $170"');
     }
-    
+
     setIsProcessing(false);
   };
 
@@ -306,26 +312,5 @@ export const RemindersPage: React.FC = () => {
     </div>
   );
 };
-
-// Helper functions
-function getCompanyName(ticker: string): string {
-  const companies: Record<string, string> = {
-    AAPL: 'Apple Inc.',
-    NVDA: 'NVIDIA Corporation',
-    TSLA: 'Tesla, Inc.',
-    MSFT: 'Microsoft Corporation',
-    GOOGL: 'Alphabet Inc.',
-    AMZN: 'Amazon.com, Inc.',
-    META: 'Meta Platforms, Inc.',
-    QCOM: 'Qualcomm Incorporated',
-    AMD: 'Advanced Micro Devices, Inc.',
-    INTC: 'Intel Corporation',
-  };
-  return companies[ticker] || ticker;
-}
-
-function getRandomPrice(): number {
-  return Math.round((100 + Math.random() * 400) * 100) / 100;
-}
 
 export default RemindersPage;
