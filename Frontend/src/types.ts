@@ -82,73 +82,38 @@ export interface KeyStatistics {
   finnhubIndustry?: string;
 }
 
-export interface StockSymbol {
-  description: string;
-  displaySymbol: string;
-  symbol: string;
-  type: string;
-// Sentiment Report Types
-export type ForecastHorizon = '1D' | '1W' | '1M' | '3M' | '6M';
-export type Stance = 'bullish' | 'neutral' | 'bearish';
+// Stock Reminder Types
+export type ReminderConditionType = 'price_above' | 'price_below' | 'percent_change' | 'time_based' | 'custom';
+export type ReminderStatus = 'active' | 'triggered' | 'expired' | 'cancelled';
 
-export interface ForecastQuantiles {
-  q10: number;
-  q50: number;
-  q90: number;
+export interface ReminderCondition {
+  type: ReminderConditionType;
+  targetPrice?: number;
+  percentChange?: number;
+  triggerTime?: string;
+  customCondition?: string;
 }
 
-export interface ModelBreakdown {
-  modelName: string;
-  weight: number;
-  contribution: number;
-}
-
-export interface Forecast {
-  probabilityUp: number;
-  expectedReturn: number;
-  quantiles: ForecastQuantiles;
-  uncertainty: number;
-  modelBreakdown: ModelBreakdown[];
-}
-
-export interface RiskFlag {
+export interface StockReminder {
   id: string;
-  severity: 'high' | 'medium' | 'low';
+  originalText: string;
+  ticker: string;
+  companyName?: string;
+  action: string;
+  condition: ReminderCondition;
+  status: ReminderStatus;
+  createdAt: string;
+  triggeredAt?: string;
+  currentPrice?: number;
+  notes?: string;
+}
+
+export interface ReminderAlert {
+  id: string;
+  reminderId: string;
+  ticker: string;
   message: string;
+  triggeredAt: string;
+  isRead: boolean;
+  originalReminder: StockReminder;
 }
-
-export interface Driver {
-  id: string;
-  factor: string;
-  impact: number;
-  description: string;
-}
-
-export interface Risk {
-  flags: RiskFlag[];
-  topDrivers: Driver[];
-  confidenceScore: number;
-}
-
-export interface Narrative {
-  stance: Stance;
-  explanation: string;
-}
-
-export interface SentimentReport {
-  ticker: string;
-  companyName: string;
-  horizon: ForecastHorizon;
-  generatedAt: string;
-  forecast: Forecast;
-  risk: Risk;
-  narrative?: Narrative;
-  recentPrices?: number[];
-}
-
-export interface RecentSearch {
-  ticker: string;
-  companyName: string;
-  searchedAt: string;
-}
-
