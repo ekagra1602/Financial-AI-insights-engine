@@ -146,7 +146,7 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                             showline: false,
                             color: '#666',
                             tickfont: { color: '#666' },
-                            tickformat: '%b %d %H:%M', // Consistent format
+                            tickformat: '%b %d %Y %H:%M', // Consistent format with year
                             // Remove gaps (weekends, nights)
                             rangebreaks: [
                                 // Hide weekends for all
