@@ -10,3 +10,4 @@ supabase
 twelvedata
 pandas
 sqlite-utils
+pytz

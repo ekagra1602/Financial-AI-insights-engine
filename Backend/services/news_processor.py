@@ -20,21 +20,22 @@ class NewsProcessor:
     def __init__(self):
         self.supabase = SupabaseClient()
 
-    def fetch_and_process_news(self, ticker: str = None, from_date: str = None, to_date: str = None):
+    def fetch_and_process_news(self, ticker: str = None, from_date: str = None, to_date: str = None, force_refresh: bool = False):
         """
         Fetches news from Finnhub, dedupes, scrapes, and summarizes using AI100.
-        Checks Supabase cache first.
+        Checks Supabase cache first unless force_refresh is True.
         """
-        # 1. Try to get from Supabase first (Cache Hit)
-        # Check if we have recent news in DB matching the criteria
-        try:
-            # We use a limit of 5 as per original logic
-            db_news = self.supabase.get_recent_articles(ticker, limit=5, from_date=from_date)
-            if db_news and len(db_news) > 0:
-                print(f"Cache HIT for ticker {ticker}: Found {len(db_news)} articles in DB.")
-                return db_news
-        except Exception as e:
-            print(f"Error checking DB cache: {e}")
+        # 1. Try to get from Supabase first (Cache Hit) — skip if force_refresh
+        if not force_refresh:
+            try:
+                db_news = self.supabase.get_recent_articles(ticker, limit=5, from_date=from_date)
+                if db_news and len(db_news) > 0:
+                    print(f"Cache HIT for ticker {ticker}: Found {len(db_news)} articles in DB.")
+                    return db_news
+            except Exception as e:
+                print(f"Error checking DB cache: {e}")
+        else:
+            print(f"🔄 Force refresh requested for ticker {ticker} — skipping cache.")
 
         # 2. Cache Miss or insufficient data: Fetch from API
         print(f"Cache MISS for ticker {ticker}: Fetching from API...")
@@ -90,11 +91,12 @@ class NewsProcessor:
             # 3. Process and Store
             
             # Scrape content
-            content = self._scrape_content(url)
+            scraped_content = self._scrape_content(url)
+            finnhub_summary = item.get('summary', '')
             
-            # Fallback to Finnhub summary if scraping fails or returns empty
-            if not content:
-                content = item.get('summary', '')
+            # Validate scraped content — check for garbage responses
+            # (JavaScript walls, cookie consent pages, error messages, etc.)
+            content = self._pick_best_content(scraped_content, finnhub_summary, url)
             
             # Process with Qualcomm AI100
             ai_result = analyze_text(content)
@@ -122,6 +124,73 @@ class NewsProcessor:
             processed_news.append(article_data)
             
         return processed_news
+
+    def _pick_best_content(self, scraped_content: str, finnhub_summary: str, url: str) -> str:
+        """
+        Decides which content to send to the AI100 for analysis.
+        Detects garbage scraped content (JavaScript walls, cookie consent, error pages, etc.)
+        and falls back to the Finnhub API summary when scraping fails.
+        """
+        # Indicators that the scraped content is garbage, not a real article
+        GARBAGE_INDICATORS = [
+            "enable javascript",
+            "enable cookies",
+            "javascript is disabled",
+            "cookies are disabled",
+            "please enable",
+            "your browser",
+            "ad blocker",
+            "adblock",
+            "subscribe to continue",
+            "subscription required",
+            "sign in to read",
+            "log in to continue",
+            "access denied",
+            "403 forbidden",
+            "404 not found",
+            "page not found",
+            "captcha",
+            "are you a robot",
+            "verify you are human",
+            "consent to cookies",
+            "cookie policy",
+            "gdpr",
+            "we use cookies",
+            "accept cookies",
+        ]
+
+        MIN_ARTICLE_LENGTH = 100  # Minimum chars for a valid article
+
+        # Check if scraped content exists and is usable
+        if scraped_content and scraped_content.strip():
+            content_lower = scraped_content.lower().strip()
+
+            # Check for garbage indicators
+            is_garbage = any(indicator in content_lower for indicator in GARBAGE_INDICATORS)
+
+            # Check if content is too short to be a real article
+            is_too_short = len(content_lower) < MIN_ARTICLE_LENGTH
+
+            if is_garbage:
+                print(f"   ⚠️  Scraped content is garbage (error/wall page), using Finnhub summary instead")
+                print(f"   Garbage detected in: '{scraped_content[:80]}...'")
+            elif is_too_short:
+                print(f"   ⚠️  Scraped content too short ({len(content_lower)} chars), using Finnhub summary instead")
+            else:
+                # Scraped content looks good
+                print(f"   📄 Using scraped content ({len(scraped_content)} chars)")
+                return scraped_content
+        else:
+            print(f"   ⚠️  Scraping returned empty, using Finnhub summary")
+
+        # Fallback to Finnhub summary
+        if finnhub_summary and finnhub_summary.strip():
+            print(f"   📄 Using Finnhub summary ({len(finnhub_summary)} chars)")
+            return finnhub_summary
+
+        # Last resort: use the URL itself as minimal context
+        print(f"   ⚠️  No usable content for {url}")
+        return f"News article from {url}"
 
     def _hash_url(self, url: str) -> str:
         """

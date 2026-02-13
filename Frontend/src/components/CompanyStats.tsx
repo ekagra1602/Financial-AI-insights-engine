@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { fetchKeyStatistics } from '../services/api';
 import { KeyStatistics } from '../types';
 
@@ -8,27 +8,37 @@ interface CompanyStatsProps {
 
 export const CompanyStats: React.FC<CompanyStatsProps> = ({ symbol }) => {
     const [stats, setStats] = useState<KeyStatistics | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
+        // Cancel previous request
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         const loadStats = async () => {
             setLoading(true);
             setError(null);
             try {
                 const data = await fetchKeyStatistics(symbol);
+                if (controller.signal.aborted) return;
                 setStats(data);
             } catch (err) {
+                if (controller.signal.aborted) return;
                 console.error("Failed to fetch stats", err);
                 setError("Failed to load statistics");
             } finally {
-                setLoading(false);
+                if (!controller.signal.aborted) setLoading(false);
             }
         };
 
         if (symbol) {
             loadStats();
         }
+
+        return () => controller.abort();
     }, [symbol]);
 
     if (loading) {
@@ -44,9 +54,15 @@ export const CompanyStats: React.FC<CompanyStatsProps> = ({ symbol }) => {
         );
     }
 
-    if (error || !stats) {
-        return null;
+    if (error) {
+        return (
+            <div className="w-full bg-surface rounded-xl border border-border p-6 shadow-lg text-center text-text-secondary">
+                <p>Could not load statistics. Try again later.</p>
+            </div>
+        );
     }
+
+    if (!stats) return null;
 
     // Format helpers
     const formatNumber = (num: number | null | undefined) => {

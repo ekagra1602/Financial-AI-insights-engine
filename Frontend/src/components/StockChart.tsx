@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Plot from 'react-plotly.js';
 import { fetchStockHistory } from '../services/api';
 import { StockDataPoint } from '../types';
@@ -17,60 +17,61 @@ const timeframes = ['1D', '5D', '1M', '3M', '1Y', '5Y'];
 export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, onToggleWatchlist }) => {
     const [data, setData] = useState<StockDataPoint[]>([]);
     const [timeframe, setTimeframe] = useState('1D');
-    const [loading, setLoading] = useState(false);
-    // Auto-refresh timer
+    const [loading, setLoading] = useState(true);
     const intervalRef = useRef<number | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
 
-    const loadData = async () => {
+    const loadData = useCallback(async (sig?: AbortSignal) => {
         setLoading(true);
-        // Optional: clear data to show loading screen immediately/explicitly
-        if (data.length > 0) {
-            // Keep old data for transition or empty if strictly desired
-        }
-
         try {
             const history = await fetchStockHistory(symbol, timeframe);
+            if (sig?.aborted) return; // Don't update state if aborted
             setData(history);
         } catch (error) {
+            if (sig?.aborted) return;
             console.error("Failed to load stock data", error);
         } finally {
-            setLoading(false);
+            if (!sig?.aborted) setLoading(false);
         }
-    };
+    }, [symbol, timeframe]);
 
     useEffect(() => {
-        loadData();
+        // Cancel any previous in-flight request
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        loadData(controller.signal);
 
         // Polling every 5 mins
         if (intervalRef.current) clearInterval(intervalRef.current);
-        intervalRef.current = window.setInterval(loadData, 300000); // 5 mins
+        intervalRef.current = window.setInterval(() => loadData(controller.signal), 300000);
 
         return () => {
+            controller.abort();
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [symbol, timeframe]);
+    }, [loadData]);
 
     // Determine color
     const isPositive = data.length > 0 && (data[data.length - 1].close >= data[0].open);
-    // Robinhood green/red hex codes
     const lineColor = isPositive ? '#00c805' : '#ff5000';
 
     const xData = data.map(d => d.time);
     const yData = data.map(d => d.close);
 
-
     // Calculate dynamic Y-axis range
     const prices = data.map(d => d.close);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
-    const padding = (maxPrice - minPrice) * 0.05; // 5% padding
+    const padding = (maxPrice - minPrice) * 0.05;
 
     const yRange = data.length > 0
         ? [minPrice - padding, maxPrice + padding]
         : undefined;
 
     return (
-        <div className="w-full h-full p-4 bg-surface rounded-xl shadow-lg border border-border">
+        <div className="w-full h-full p-4 bg-surface rounded-xl shadow-lg border border-border flex flex-col overflow-hidden">
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <div className="flex items-center gap-3">
@@ -110,7 +111,7 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                 </div>
             </div>
 
-            <div className="relative w-full h-[500px]">
+            <div className="relative w-full flex-1 min-h-0">
                 {(loading || data.length === 0) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface/50 backdrop-blur-sm rounded-xl">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mb-2" />
@@ -119,10 +120,6 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                         </div>
                     </div>
                 )}
-                {/* 
-                  NOTE: Plot component needs to be wrapped or size handled carefully 
-                  to fit parent container. 
-                */}
                 <Plot
                     data={[
                         {
@@ -146,12 +143,9 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                             showline: false,
                             color: '#666',
                             tickfont: { color: '#666' },
-                            tickformat: '%b %d %Y %H:%M', // Consistent format with year
-                            // Remove gaps (weekends, nights)
+                            tickformat: '%b %d %Y %H:%M',
                             rangebreaks: [
-                                // Hide weekends for all
                                 { bounds: ['sat', 'mon'] },
-                                // Hide non-trading hours (4pm - 9:30am) ONLY for intraday
                                 ...(['1D', '5D', '1M', '3M'].includes(timeframe) ? [
                                     { bounds: [16, 9.5], pattern: 'hour' as const }
                                 ] : [])
@@ -166,7 +160,7 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                             range: yRange,
                         },
                         dragmode: false,
-                        hovermode: 'x unified', // Show all traces on hover
+                        hovermode: 'x unified',
                         hoverlabel: {
                             bgcolor: '#1E1E1E',
                             bordercolor: '#333',

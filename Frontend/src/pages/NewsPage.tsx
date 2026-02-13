@@ -5,9 +5,8 @@ import { RefreshCw, Filter } from 'lucide-react';
 import { NewsCard } from '../components/news/NewsCard';
 import { RelatedArticles } from '../components/news/RelatedArticles';
 import { summarizedNewsArticles, relatedArticles } from '../data/newsData';
-import { stockWatchlist } from '../data/demoData';
-import { SummarizedNewsArticle, RelatedArticle, StockData } from '../types';
-import { fetchCompanyNews, fetchMarketNews } from '../services/api';
+import { SummarizedNewsArticle, RelatedArticle, WatchlistItem } from '../types';
+import { fetchCompanyNews, fetchMarketNews, getWatchlist } from '../services/api';
 
 // ... (imports)
 
@@ -41,159 +40,161 @@ export const NewsPage: React.FC = () => {
   const [relationTitle, setRelationTitle] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<string>('Just now');
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
-  const [watchlistStocks, setWatchlistStocks] = useState<StockData[]>([]);
+  const [watchlistStocks, setWatchlistStocks] = useState<WatchlistItem[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
   const [availableTickers, setAvailableTickers] = useState<string[]>([]);
-  
-  // Initialize watchlist and available tickers
+
+  // Load watchlist from API (same source as homepage)
   useEffect(() => {
-    const stocks = stockWatchlist;
-    setWatchlistStocks(stocks);
-    
-    // Set available tickers (tickers that have news)
-    const tickers = stocks.map(s => s.symbol);
-    setAvailableTickers(tickers);
-    
-    // By default, DO NOT select all tickers. We want to show general news first.
-    // Only if a specific ticker is in URL, we might want to select it (handled in fetch logic)
-    setSelectedTickers([]);
+    const loadWatchlist = async () => {
+      try {
+        const items: WatchlistItem[] = await getWatchlist();
+        setWatchlistStocks(items);
+        const tickers = items.map(s => s.symbol);
+        setAvailableTickers(tickers);
+        setSelectedTickers([]);
+      } catch (e) {
+        console.error('Failed to load watchlist:', e);
+      }
+    };
+    loadWatchlist();
   }, []);
-  
+
   // Fetch news data based on selected tickers
-  const fetchNewsArticles = async () => {
+  const fetchNewsArticles = async (forceRefresh: boolean = false) => {
     setLoading(true);
     setError(null);
-    
+
     // Simple way to avoid race conditions: clear articles immediately when fetching starts
     // setNewsArticles([]); // Optional: if you want to clear old news while loading new
 
     try {
-        let articles: SummarizedNewsArticle[] = [];
-        
-        // If specific ticker is in URL, use that.
-        if (ticker) {
-             const newsList = await fetchCompanyNews(ticker);
-             articles = mapNewsResponse(newsList, ticker);
-        } 
-        // If tickers are selected in filter, fetch for them
-        else if (selectedTickers.length > 0) {
-            console.log("Fetching news for selected tickers:", selectedTickers);
-            // We use map with internal try/catch to ensure one failure doesn't break all
-            const promises = selectedTickers.map(async (t) => {
-                try {
-                    const data = await fetchCompanyNews(t);
-                    return { status: 'fulfilled', value: data, ticker: t };
-                } catch (e) {
-                    console.error(`Failed to fetch news for ${t}`, e);
-                    return { status: 'rejected', reason: e, ticker: t };
-                }
-            });
-            
-            const results = await Promise.all(promises);
-            
-            results.forEach((result: any) => {
-                if (result.status === 'fulfilled') {
-                    const tick = result.ticker;
-                    articles.push(...mapNewsResponse(result.value, tick));
-                }
-            });
-        } 
-        // If NO tickers selected, fetch general market news
-        else {
-            console.log("Fetching general market news");
-            const newsList = await fetchMarketNews();
-            // Market news might not have a specific ticker, or might have 'market'
-            articles = mapNewsResponse(newsList, 'Market');
-        }
+      let articles: SummarizedNewsArticle[] = [];
 
-        // Deduplicate articles based on URL
-        const uniqueArticles: SummarizedNewsArticle[] = [];
-        const seenUrls = new Set<string>();
-
-        articles.forEach(article => {
-            if (!seenUrls.has(article.url)) {
-                seenUrls.add(article.url);
-                uniqueArticles.push(article);
-            }
+      // If specific ticker is in URL, use that.
+      if (ticker) {
+        const newsList = await fetchCompanyNews(ticker, forceRefresh);
+        articles = mapNewsResponse(newsList, ticker);
+      }
+      // If tickers are selected in filter, fetch for them
+      else if (selectedTickers.length > 0) {
+        console.log("Fetching news for selected tickers:", selectedTickers);
+        // We use map with internal try/catch to ensure one failure doesn't break all
+        const promises = selectedTickers.map(async (t) => {
+          try {
+            const data = await fetchCompanyNews(t, forceRefresh);
+            return { status: 'fulfilled', value: data, ticker: t };
+          } catch (e) {
+            console.error(`Failed to fetch news for ${t}`, e);
+            return { status: 'rejected', reason: e, ticker: t };
+          }
         });
-        
-        // Sort by recency
-        uniqueArticles.sort((a: any, b: any) => b.rawDatetime - a.rawDatetime);
 
-        if (uniqueArticles.length === 0) {
-            // Only set error if we really have no articles and we expected some
-            if (selectedTickers.length > 0 || ticker) {
-                 setError('No news articles available for selected companies.');
-            } else {
-                 setError('No market news available.');
-            }
+        const results = await Promise.all(promises);
+
+        results.forEach((result: any) => {
+          if (result.status === 'fulfilled') {
+            const tick = result.ticker;
+            articles.push(...mapNewsResponse(result.value, tick));
+          }
+        });
+      }
+      // If NO tickers selected, fetch general market news
+      else {
+        console.log("Fetching general market news");
+        const newsList = await fetchMarketNews(forceRefresh);
+        // Market news might not have a specific ticker, or might have 'market'
+        articles = mapNewsResponse(newsList, 'Market');
+      }
+
+      // Deduplicate articles based on URL
+      const uniqueArticles: SummarizedNewsArticle[] = [];
+      const seenUrls = new Set<string>();
+
+      articles.forEach(article => {
+        if (!seenUrls.has(article.url)) {
+          seenUrls.add(article.url);
+          uniqueArticles.push(article);
         }
+      });
 
-        setNewsArticles(uniqueArticles);
-        setLastUpdated('Just now');
+      // Sort by recency
+      uniqueArticles.sort((a: any, b: any) => b.rawDatetime - a.rawDatetime);
+
+      if (uniqueArticles.length === 0) {
+        // Only set error if we really have no articles and we expected some
+        if (selectedTickers.length > 0 || ticker) {
+          setError('No news articles available for selected companies.');
+        } else {
+          setError('No market news available.');
+        }
+      }
+
+      setNewsArticles(uniqueArticles);
+      setLastUpdated('Just now');
 
     } catch (err) {
-        console.error(err);
-        setError('Failed to load news articles. Please try again.');
+      console.error(err);
+      setError('Failed to load news articles. Please try again.');
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
   const mapNewsResponse = (newsList: any[], tickerLabel: string): SummarizedNewsArticle[] => {
-      return newsList.map((item: any, idx: number) => ({
-        id: `${tickerLabel}-${item.datetime}-${idx}`,
-        headline: item.headline,
-        summary: item.summary,
-        source: item.source,
-        url: item.url,
-        publishedTime: formatTimeAgo(item.datetime),
-        sentiment: 'neutral' as const,
-        tone: 'neutral' as const,
-        keywords: [],
-        ticker: tickerLabel,
-        rawDatetime: item.datetime
+    return newsList.map((item: any, idx: number) => ({
+      id: `${tickerLabel}-${item.datetime}-${idx}`,
+      headline: item.headline,
+      summary: item.summary,
+      source: item.source,
+      url: item.url,
+      publishedTime: formatTimeAgo(item.datetime),
+      sentiment: (item.sentiment || 'neutral') as 'positive' | 'negative' | 'neutral',
+      tone: (item.tone || 'neutral') as 'bullish' | 'bearish' | 'neutral',
+      keywords: item.keywords || [],
+      ticker: tickerLabel,
+      rawDatetime: item.datetime
     }));
   };
-  
+
   // Generate related articles based on keywords
   const generateRelatedArticles = (articleId: string, keywords: string[]) => {
     // First check if we have predefined related articles
     const existingRelated = relatedArticles[articleId] || [];
-    
+
     if (existingRelated.length > 0) {
       return existingRelated;
     }
-    
+
     // If not, generate related articles based on keywords
     const allArticles: SummarizedNewsArticle[] = [];
-    
+
     // Get all news articles
     Object.values(summarizedNewsArticles).forEach(articleArray => {
       allArticles.push(...articleArray);
     });
-    
+
     const currentArticle = newsArticles.find(article => article.id === articleId);
-    
+
     if (!currentArticle) return [];
-    
+
     // Find articles that share keywords with the current article
     const related = allArticles
       .filter(article => article.id !== articleId) // Don't include the current article
       .filter(article => {
         // Check if any keywords match
-        return article.keywords.some(keyword => 
+        return article.keywords.some(keyword =>
           keywords.includes(keyword)
         );
       })
       .slice(0, 5); // Limit to 5 articles
-    
+
     // Convert to RelatedArticle format
     return related.map((article, index) => {
       // Find the matching keyword
       const matchingKeywords = article.keywords.filter(k => keywords.includes(k));
       const matchingKeyword = matchingKeywords.length > 0 ? matchingKeywords[0] : '';
-      
+
       return {
         id: `generated-related-${articleId}-${index}`,
         headline: article.headline,
@@ -205,39 +206,39 @@ export const NewsPage: React.FC = () => {
       };
     });
   };
-  
+
   // Handle showing related articles
   const handleShowRelated = (articleId: string) => {
     // Find the original article to get its keywords for context
     const originalArticle = newsArticles.find(article => article.id === articleId);
-    
+
     if (originalArticle) {
       const keywords = originalArticle.keywords;
       const relatedForArticle = generateRelatedArticles(articleId, keywords);
-      
+
       setCurrentRelatedArticles(relatedForArticle);
       setRelationTitle(keywords.join(', '));
       setIsRelatedOpen(true);
     }
   };
-  
-  // Handle refreshing news data
+
+  // Handle refreshing news data — force refresh bypasses cache
   const handleRefresh = () => {
-    fetchNewsArticles();
+    fetchNewsArticles(true);
   };
-  
+
   // Toggle filter selection - and automatically apply the filter
   const toggleTickerSelection = (tickerSymbol: string) => {
     setSelectedTickers(prev => {
       // Create the new selected tickers array
       if (prev.includes(tickerSymbol)) {
-          return prev.filter(t => t !== tickerSymbol);
+        return prev.filter(t => t !== tickerSymbol);
       } else {
-          return [...prev, tickerSymbol];
+        return [...prev, tickerSymbol];
       }
     });
   };
-  
+
   // Effect to apply filters whenever the selection changes
   useEffect(() => {
     // Only run if watchlist is loaded
@@ -245,24 +246,24 @@ export const NewsPage: React.FC = () => {
       fetchNewsArticles();
     }
   }, [selectedTickers, ticker]);
-  
+
   // Select all tickers and automatically apply
   const selectAllTickers = () => {
     setSelectedTickers([...availableTickers]);
   };
-  
+
   // Clear all ticker selections and automatically apply
   const clearTickerSelections = () => {
     setSelectedTickers([]);
   };
-  
+
   // Effect to fetch news when component mounts
   useEffect(() => {
     if (watchlistStocks.length > 0) {
       fetchNewsArticles();
     }
   }, [watchlistStocks.length]);
-  
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="flex flex-col lg:flex-row gap-6">
@@ -284,7 +285,7 @@ export const NewsPage: React.FC = () => {
                 )}
               </p>
             </div>
-            
+
             <div className="flex items-center gap-3 mt-3 sm:mt-0">
               <button
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -298,7 +299,7 @@ export const NewsPage: React.FC = () => {
                   </span>
                 )}
               </button>
-              
+
               <button
                 onClick={handleRefresh}
                 disabled={loading}
@@ -309,7 +310,7 @@ export const NewsPage: React.FC = () => {
               </button>
             </div>
           </div>
-          
+
           {/* News Feed Section */}
           <div className="space-y-4">
             {loading ? (
@@ -336,7 +337,7 @@ export const NewsPage: React.FC = () => {
               // Error state
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg p-4 text-center">
                 <p className="text-red-800 dark:text-red-300">{error}</p>
-                <button 
+                <button
                   onClick={handleRefresh}
                   className="mt-3 px-4 py-2 bg-primary text-black font-medium rounded-lg text-sm"
                 >
@@ -351,7 +352,7 @@ export const NewsPage: React.FC = () => {
             ) : (
               // News articles list
               newsArticles.map((article) => (
-                <NewsCard 
+                <NewsCard
                   key={article.id}
                   article={article}
                   onShowRelated={handleShowRelated}
@@ -360,12 +361,12 @@ export const NewsPage: React.FC = () => {
             )}
           </div>
         </div>
-        
+
         {/* Right Sidebar - Filters */}
         <div className={`lg:w-1/4 lg:block ${isFilterOpen ? 'block' : 'hidden'}`}>
           <div className="sticky top-24 bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Companies</h3>
-            
+
             <div className="flex justify-between mb-4">
               <button
                 onClick={selectAllTickers}
@@ -380,18 +381,18 @@ export const NewsPage: React.FC = () => {
                 Clear
               </button>
             </div>
-            
+
             <div className="space-y-2 max-h-[60vh] overflow-y-auto py-1 pr-1">
               {watchlistStocks.map((stock) => (
-                <label 
-                  key={stock.symbol} 
+                <label
+                  key={stock.symbol}
                   className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors
-                    ${availableTickers.includes(stock.symbol) 
-                      ? "hover:bg-gray-100 dark:hover:bg-gray-700" 
+                    ${availableTickers.includes(stock.symbol)
+                      ? "hover:bg-gray-100 dark:hover:bg-gray-700"
                       : "opacity-50"}`}
                 >
                   <div className="flex items-center">
-                    <input 
+                    <input
                       type="checkbox"
                       className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                       checked={selectedTickers.includes(stock.symbol)}
@@ -402,9 +403,9 @@ export const NewsPage: React.FC = () => {
                       {stock.symbol}
                     </span>
                   </div>
-                  
-                  <div className={`text-sm ${stock.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {stock.change >= 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
+
+                  <div className={`text-sm ${(stock.change ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {(stock.change ?? 0) >= 0 ? '+' : ''}{(stock.change ?? 0).toFixed(2)}%
                   </div>
                 </label>
               ))}
@@ -412,7 +413,7 @@ export const NewsPage: React.FC = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Related Articles Drawer */}
       <RelatedArticles
         articles={currentRelatedArticles}

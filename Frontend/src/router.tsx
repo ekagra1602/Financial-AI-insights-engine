@@ -7,10 +7,16 @@ import { RootLayout } from './layouts/RootLayout';
 import WebSearch from './components/WebSearch';
 import SentimentPage from './pages/SentimentPage';
 
+import { NotificationProvider } from './context/NotificationContext';
+
 // Create the router with routes
 const router = createBrowserRouter([
   {
-    element: <RootLayout />,
+    element: (
+      <NotificationProvider>
+        <RootLayout />
+      </NotificationProvider>
+    ),
     children: [
       {
         path: '/',
