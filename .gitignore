@@ -1,18 +1,21 @@
-Backend/stock_data.db
-StockGraph/*
-
-.env
-venv/
-__pycache__/
-.DS_Store
-Backend/.env
-Backend/venv/
-Backend/__pycache__/
-# Markdown documentation files (keep only README.md)
+# Markdown documentation files (keep only root Readme.md and Backend/README.md)
 *.md
-!README.md
-!readme.md
-!Readme.md
+!/Readme.md
+!/Backend/README.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
 
 # Dependencies
 node_modules/
@@ -20,6 +23,7 @@ package-lock.json
 
 # Build output
 dist/
+dist-ssr/
 build/
 .vite/
 
@@ -31,16 +35,22 @@ build/
 .env.production.local
 
 # IDE & Editor files
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
+*.sw?
 *~
 .project
 .classpath
 .settings/
 *.sublime-project
 *.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # OS-specific files
 .DS_Store
