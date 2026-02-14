@@ -35,9 +35,8 @@ class DataManager:
         timeframe: '1min', '1h', '1day'
         
         Caching rules:
-        - If market is CLOSED and we have cached data → return DB only, no API call
-        - If data is fresher than 2 minutes → return DB only, no API call
-        - Otherwise → fetch from TwelveData API and update DB
+        - If market is OPEN: fetch if data > 2 min old
+        - If market is CLOSED: fetch ONLY if we don't have the last market close data
         """
         table_name = "bars_1m" if timeframe == "1min" else ("bars_1h" if timeframe == "1h" else "bars_1d")
         interval = "1min" if timeframe == "1min" else ("1h" if timeframe == "1h" else "1day")
@@ -60,28 +59,45 @@ class DataManager:
                  start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
         else:
             ts_format = '%Y-%m-%d %H:%M:%S' if interval in ["1min", "1h"] else '%Y-%m-%d'
-            last_dt = datetime.strptime(latest_ts, ts_format)
-            now = datetime.now()
-            diff_seconds = (now - last_dt).total_seconds()
+            # Parse as naive first
+            last_dt_naive = datetime.strptime(latest_ts, ts_format)
+            # Localize to ET assuming DB stores ET (which TwelveData returns)
+            last_dt = ET.localize(last_dt_naive)
             
-            # === MARKET HOURS CHECK ===
-            # If market is closed and we have ANY data, don't fetch
-            if not is_market_open():
-                print(f"  Market closed. Serving {symbol} {interval} from DB cache (last: {latest_ts})")
-                return fetch_history(symbol, table_name)
+            now_et = datetime.now(ET)
             
-            # === 2-MINUTE STALENESS CHECK ===
-            # Only fetch if data is older than 2 minutes
-            if diff_seconds < 120:  # 2 minutes
-                print(f"  Data fresh ({int(diff_seconds)}s old). Serving {symbol} {interval} from DB cache.")
-                return fetch_history(symbol, table_name)
-            
-            # Data is stale and market is open — fetch
-            fetch_needed = True
-            if interval in ["1min", "1h"]:
-                start_date = latest_ts
+            if is_market_open():
+                # Market OPEN: Check 2-min staleness
+                diff_seconds = (now_et - last_dt).total_seconds()
+                if diff_seconds > 120:
+                    fetch_needed = True
+                    start_date = latest_ts # Increment logic handled by API start_date usually inclusive? 
+                    # TwelveData start_date is inclusive. We can just ask for latest.
+                else:
+                    print(f"  [OPEN] Data fresh ({int(diff_seconds)}s old). Cache HIT.")
             else:
-                start_date = (last_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+                # Market CLOSED: Check if we have the last close
+                # Last market close is usually today 16:00 or yesterday 16:00
+                
+                # Find the most recent hypothetical market close time
+                cursor = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+                if now_et < cursor:
+                    cursor -= timedelta(days=1)
+                
+                # Roll back weekends to Friday
+                while cursor.weekday() >= 5:
+                    cursor -= timedelta(days=1)
+                
+                last_market_close = cursor
+                # Exception: Early close days? Ignoring for MVP.
+                
+                # If our data is OLDER than the last close, we need to fetch
+                if last_dt < last_market_close:
+                    print(f"  [CLOSED] Data stale (Last: {last_dt}, Market Close: {last_market_close}). Fetching...")
+                    fetch_needed = True
+                    start_date = latest_ts
+                else:
+                    print(f"  [CLOSED] Data complete (Last: {last_dt} >= Close: {last_market_close}). Cache HIT.")
 
         if fetch_needed:
             print(f"Fetching {symbol} {interval} from {start_date}...")

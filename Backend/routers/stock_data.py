@@ -25,12 +25,16 @@ def get_history(symbol: str, timeframe: str = "1D"):
     try:
         print(f"DEBUG: Processing {symbol} timeframe={timeframe}")
         if timeframe == "1D":
-            # 1min data, last 24 hours
+            # 1min data, "Latest Trading Day"
             df = manager.get_stock_data(symbol, "1min")
             if not df.empty and 'datetime' in df.columns:
                 df['dt'] = pd.to_datetime(df['datetime'])
-                cutoff = datetime.now() - timedelta(hours=24)
-                df = df[df['dt'] >= cutoff]
+                # Find the latest date present in the data
+                last_dt = df['dt'].max()
+                if pd.notna(last_dt):
+                    # Filter for that entire day
+                    day_start = last_dt.normalize() # 00:00:00 of that day
+                    df = df[df['dt'] >= day_start]
                 
         elif timeframe == "5D":
             # 1h data, find last 5 unique trading dates
