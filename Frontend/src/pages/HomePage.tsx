@@ -84,17 +84,15 @@ const HomePage: React.FC = () => {
     return (
         <div className="flex h-[calc(100vh-64px)] p-6 gap-6">
             {/* Left: Stock Graph (2/3 width) */}
-            <div className="w-2/3 h-full flex flex-col gap-4 overflow-y-auto pr-2">
-                <div className="w-full flex-1 min-h-[300px]">
+            <div className="w-2/3 h-full flex flex-col gap-6 overflow-y-auto pr-2">
+                <div className="w-full min-h-[500px]">
                     <StockChart
                         symbol={symbol}
                         isInWatchlist={isInWatchlist}
                         onToggleWatchlist={handleToggleWatchlist}
                     />
                 </div>
-                <div className="flex-shrink-0">
-                    <CompanyStats symbol={symbol} />
-                </div>
+                <CompanyStats symbol={symbol} />
             </div>
 
             {/* Right: Search & List (1/3 width) */}

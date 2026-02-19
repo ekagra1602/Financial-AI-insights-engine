@@ -3,8 +3,6 @@ import requests
 from fastapi import APIRouter, HTTPException, Query
 from dotenv import load_dotenv
 from models import KeyStatistics
-from datetime import datetime
-import pytz
 
 load_dotenv()
 
@@ -14,20 +12,6 @@ FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
 if not FINNHUB_API_KEY:
     print("Warning: FINNHUB_API_KEY not found in environment variables.")
-
-ET = pytz.timezone("America/New_York")
-
-# In-memory cache for /quote results: { symbol: { "data": KeyStatistics, "timestamp": datetime } }
-_stats_cache: dict = {}
-CACHE_TTL_SECONDS = 120  # 2 minutes
-
-def _is_market_open() -> bool:
-    now_et = datetime.now(ET)
-    if now_et.weekday() >= 5:
-        return False
-    market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
-    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
-    return market_open <= now_et <= market_close
 
 def get_finnhub_quote(symbol: str):
     url = f"{FINNHUB_BASE_URL}/quote"
@@ -99,20 +83,8 @@ async def get_key_statistics(symbol: str = Query(..., description="Stock symbol"
     if not FINNHUB_API_KEY:
         raise HTTPException(status_code=500, detail="API Key not configured")
     
-    symbol = symbol.upper()
-    now = datetime.now()
-    
-    # Check cache
-    cached = _stats_cache.get(symbol)
-    if cached:
-        age = (now - cached["timestamp"]).total_seconds()
-        # If fresh (< 2 min) OR market is closed → return cached
-        if age < CACHE_TTL_SECONDS or not _is_market_open():
-            print(f"  Stats cache HIT for {symbol} ({int(age)}s old, market_open={_is_market_open()})")
-            return cached["data"]
-    
     try:
-        print(f"  Stats cache MISS for {symbol} — fetching from Finnhub...")
+        # Fetch data from Finnhub
         quote_data = get_finnhub_quote(symbol)
         metric_data = get_finnhub_metric(symbol)
         profile_data = get_finnhub_profile(symbol)
@@ -146,11 +118,7 @@ async def get_key_statistics(symbol: str = Query(..., description="Stock symbol"
             finnhubIndustry=profile_data.get("finnhubIndustry")
         )
         
-        # Store in cache
-        _stats_cache[symbol] = {"data": stats, "timestamp": now}
-        
         return stats
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
