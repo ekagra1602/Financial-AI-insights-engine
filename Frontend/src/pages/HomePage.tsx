@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StockChart } from '../components/StockChart';
-import { Search, X, Star } from 'lucide-react';
-import { searchStocks, getWatchlist, addToWatchlist, removeFromWatchlist } from '../services/api';
+import { Search, X, Star, Bell, BellRing } from 'lucide-react';
+import { searchStocks, getWatchlist, addToWatchlist, removeFromWatchlist, toggleNewsBriefing } from '../services/api';
 import { StockSymbol, WatchlistItem } from '../types';
 import { clsx } from 'clsx';
 import { CompanyStats } from '../components/CompanyStats';
@@ -81,6 +81,20 @@ const HomePage: React.FC = () => {
         await loadWatchlist();
     };
 
+    const handleToggleNewsBriefing = async (sym: string, currentCount: number) => {
+        const newEnabled = currentCount <= 0;
+        // Optimistic UI update — reflect instantly
+        setWatchlist(prev =>
+            prev.map(item =>
+                item.symbol === sym
+                    ? { ...item, news_notify_count: newEnabled ? 1 : 0 } as any
+                    : item
+            )
+        );
+        // Fire API in background (don't block UI)
+        toggleNewsBriefing(sym, newEnabled).then(() => loadWatchlist());
+    };
+
     return (
         <div className="flex h-[calc(100vh-64px)] p-6 gap-6">
             {/* Left: Stock Graph (2/3 width) */}
@@ -154,40 +168,63 @@ const HomePage: React.FC = () => {
                     ) : (
                         // Watchlist UI
                         <div className="flex flex-col gap-2">
-                            {watchlist.map((item) => (
-                                <div
-                                    key={item.symbol}
-                                    onClick={() => handleSelectSymbol(item.symbol)}
-                                    className="flex justify-between items-center p-3 hover:bg-surface-light rounded-lg transition-colors cursor-pointer group border border-transparent hover:border-border/50"
-                                >
-                                    <div>
-                                        <div className="font-bold text-text-primary flex items-center gap-2">
-                                            {item.symbol}
-                                            <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                                        </div>
-                                        <div className="text-xs text-text-secondary">{item.name}</div>
-                                    </div>
-                                    <div className="text-right flex items-center gap-3">
-                                        <div className="flex flex-col items-end">
-                                            <div className="font-medium text-text-primary">
-                                                ${item.price?.toFixed(2) || '-.--'}
+                            {watchlist.map((item) => {
+                                const newsCount = (item as any).news_notify_count || 0;
+                                return (
+                                    <div
+                                        key={item.symbol}
+                                        onClick={() => handleSelectSymbol(item.symbol)}
+                                        className="flex justify-between items-center p-3 hover:bg-surface-light rounded-lg transition-colors cursor-pointer group border border-transparent hover:border-border/50"
+                                    >
+                                        <div>
+                                            <div className="font-bold text-text-primary flex items-center gap-2">
+                                                {item.symbol}
+                                                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
                                             </div>
-                                            <div className={clsx("text-xs", (item.change || 0) >= 0 ? "text-positive" : "text-negative")}>
-                                                {(item.change || 0) > 0 ? '+' : ''}{(item.change || 0).toFixed(2)}%
-                                            </div>
+                                            <div className="text-xs text-text-secondary">{item.name}</div>
                                         </div>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                removeFromWatchlist(item.symbol).then(loadWatchlist);
-                                            }}
-                                            className="p-1 hover:bg-red-500/20 hover:text-red-400 rounded transition-colors text-text-secondary"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
+                                        <div className="text-right flex items-center gap-2">
+                                            <div className="flex flex-col items-end">
+                                                <div className="font-medium text-text-primary">
+                                                    ${item.price?.toFixed(2) || '-.--'}
+                                                </div>
+                                                <div className={clsx("text-xs", (item.change || 0) >= 0 ? "text-positive" : "text-negative")}>
+                                                    {(item.change || 0) > 0 ? '+' : ''}{(item.change || 0).toFixed(2)}%
+                                                </div>
+                                            </div>
+                                            {/* Bell icon — single click to toggle news briefing */}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleToggleNewsBriefing(item.symbol, newsCount);
+                                                }}
+                                                className={clsx(
+                                                    "p-1 rounded transition-colors",
+                                                    newsCount > 0
+                                                        ? "text-emerald-400 hover:bg-emerald-500/20"
+                                                        : "text-text-secondary hover:bg-surface-light hover:text-text-primary"
+                                                )}
+                                                title={newsCount > 0 ? 'News briefing ON — click to disable' : 'Enable morning news briefing'}
+                                            >
+                                                {newsCount > 0 ? (
+                                                    <BellRing className="w-4 h-4" />
+                                                ) : (
+                                                    <Bell className="w-4 h-4" />
+                                                )}
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    removeFromWatchlist(item.symbol).then(loadWatchlist);
+                                                }}
+                                                className="p-1 hover:bg-red-500/20 hover:text-red-400 rounded transition-colors text-text-secondary"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                             {watchlist.length === 0 && !loadingWatchlist && (
                                 <div className="text-center text-text-secondary py-8 flex flex-col items-center">
                                     <Star className="w-8 h-8 mb-2 opacity-20" />

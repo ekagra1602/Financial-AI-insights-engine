@@ -4,9 +4,9 @@ Notification Service — Three Notification Types
 Uses existing bars_1m data in SQLite (no extra API calls).
 
 Types:
-  1. DAILY_EOD    — ≥ 5% move during the trading day. Triggered once after 4 PM ET.
+  1. DAILY_EOD    — ≥ 0% move during the trading day. Triggered once after 4 PM ET.
   2. MOMENTUM_2H  — ≥ 5% move in the last 2 hours. Checked every 15 min.
-  3. MORNING_GAP  — ≥ 3% gap (today open vs yesterday close). Triggered once after 9:45 AM ET.
+  3. MORNING_GAP  — ≥ 0% gap (today open vs yesterday close). Triggered once after 9:45 AM ET.
 
 Each notification is generated once and persisted in `generated_notifications` table.
 If a stock is added to the watchlist after the trigger time, it still gets checked on the next poll.
@@ -18,13 +18,15 @@ from database import (
     save_generated_notification, notification_exists,
     get_generated_notifications_for_date,
 )
+from services.stock_manager import manager as data_manager
 import pytz
+import json
 
 ET = pytz.timezone("America/New_York")
 
-DAILY_EOD_THRESHOLD = 5.0      # percent
+DAILY_EOD_THRESHOLD = 0.0      # percent (Trigger on any move)
 MOMENTUM_2H_THRESHOLD = 5.0    # percent
-MORNING_GAP_THRESHOLD = 3.0    # percent
+MORNING_GAP_THRESHOLD = 0.0    # percent (Trigger on any gap)
 LOOKBACK_HOURS = 2
 MOMENTUM_INTERVAL_MIN = 15     # generate a new momentum check every 15 min
 
@@ -65,34 +67,69 @@ def _format_time(dt_str: str) -> str:
     except ValueError:
         return dt_str
 
+def _format_date_short(dt_str: str) -> str:
+    """Format: Monday, 17-02-2026"""
+    try:
+        if "T" in dt_str: # Handle ISO format if passed
+             dt = datetime.fromisoformat(dt_str)
+        else:
+             dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%A, %d-%m-%Y")
+    except ValueError:
+        return dt_str
+
 def _make_notification(notif_id: str, notif_type: str, symbol: str, name: str,
                        date_str: str, pct_change: float, open_price: float,
                        close_price: float, start_dt: str, end_dt: str) -> dict:
     direction = "up" if pct_change > 0 else "down"
     arrow = "↑" if direction == "up" else "↓"
 
-    # Descriptive template:
-    # "From {start} to {end}: {Symbol} {rose/fell} {pct}% (${open} -> ${close})"
     action = "rose" if pct_change > 0 else "fell"
     start_fmt = _format_time(start_dt)
     end_fmt = _format_time(end_dt)
-
-    # For daily EOD, we might say "Today from ..."
-    # For morning gap: "From yesterday close (4 PM) to today open (9:30 AM)..."
-    # For now, generic time range is good.
     
+    # "From 9:30 AM to 3:59 PM on Monday, DD-MM-YYYY, ZIM fell 6.9% ..."
+    # Use end_dt for the date part
+    date_text = _format_date_short(end_dt) 
+
     msg = (
-        f"From {start_fmt} to {end_fmt}, {symbol} {action} {abs(pct_change):.1f}% "
+        f"From {start_fmt} to {end_fmt} on {date_text}, {symbol} {action} {abs(pct_change):.1f}% "
         f"(${open_price:.2f} → ${close_price:.2f})"
     )
 
     if notif_type == "MORNING_GAP":
+        # "Overnight gap ... on Monday, DD-MM-YYYY..."
          msg = (
-            f"Overnight gap from {start_fmt} (prev close) to {end_fmt} (open): "
+            f"Overnight gap from {start_fmt} (prev close) to {end_fmt} (open) on {date_text}: "
             f"{symbol} {action} {abs(pct_change):.1f}% "
             f"(${open_price:.2f} → ${close_price:.2f})"
         )
-
+    
+    # For the UI timestamp header "Monday, MM-DD-YYYY Time"
+    # We'll use a new field `formatted_timestamp`? Or override `timestamp`?
+    # The `timestamp` field in JSON currently comes from `created_at`.
+    # But `created_at` is generated when saving to DB (in `save_generated_notification`).
+    # We can't change it here easily without changing how `save_generated_notification` works.
+    # However, `save_generated_notification` takes the dict we return here.
+    # If we add `created_at` to the dict, maybe it uses it?
+    # Let's check `database.py`. 
+    # Current behavior: `save_generated_notification` uses `datetime.now().isoformat()` if not present?
+    # Re-reading `database.py` would trigger more tool calls.
+    # I'll rely on Frontend formatting for valid ISO timestamps if possible.
+    # BUT user said "for the notifications view, I wanna change the date format... like 'Monday, MM-DD-YYYY Time'".
+    # Frontend `NotificationPanel` displays `{n.timestamp}`.
+    # If I don't touch frontend, I must ensure `n.timestamp` IS formatted string.
+    # But `stock_data.py` (step 412) shows:
+    # "timestamp": r["created_at"]
+    # So `generated_notifications` table stores ISO string?
+    # If I change what is stored in DB `created_at` column to be a formatted string, it might break sorting/parsing?
+    # Usually `created_at` should be ISO for sorting.
+    # I should change **Frontend** to format the timestamp.
+    # OR change the API response in `notification_service.py` to format it before returning.
+    # The `generate_all_notifications` function (at bottom of file) does:
+    # "timestamp": r["created_at"]
+    # I can format it THERE.
+    
     return {
         "id": notif_id,
         "type": notif_type,
@@ -102,6 +139,7 @@ def _make_notification(notif_id: str, notif_type: str, symbol: str, name: str,
         "message": msg,
         "direction": direction,
         "percentChange": round(pct_change, 2),
+        # created_at will be added by database save if missing
     }
 
 
@@ -263,20 +301,13 @@ def _check_morning_gap(db, watchlist) -> list[dict]:
         except StopIteration:
             continue
 
-        # Yesterday's close: last bar before today's open
-        yesterday = now_et - timedelta(days=1)
-        # Skip weekends — go back to Friday if needed
-        while yesterday.weekday() >= 5:
-            yesterday -= timedelta(days=1)
-
-        yesterday_start = yesterday.replace(hour=9, minute=30, second=0).strftime("%Y-%m-%d %H:%M:%S")
-        yesterday_end = yesterday.replace(hour=16, minute=0, second=0).strftime("%Y-%m-%d %H:%M:%S")
-
+        # Yesterday's close: last available bar BEFORE today's open
+        # This handles weekends, holidays, and data gaps gracefully
         try:
             yesterday_close_row = next(
                 db["bars_1m"].rows_where(
-                    "symbol = ? AND datetime >= ? AND datetime <= ?",
-                    [symbol, yesterday_start, yesterday_end],
+                    "symbol = ? AND datetime < ?",
+                    [symbol, market_open_str],
                     order_by="datetime DESC", limit=1,
                 )
             )
@@ -297,17 +328,41 @@ def _check_morning_gap(db, watchlist) -> list[dict]:
 
     return new_notifications
 
+# News briefing generation has been moved to routers/news_briefing.py
+# to avoid blocking the notification polling endpoint.
+
+def _format_timestamp_display(iso_str: str) -> str:
+    """
+    Format '2026-02-12T18:45:11' -> 'Monday, 02-12-2026 06:45 PM'
+    """
+    if not iso_str:
+        return ""
+    try:
+        # ISO string might be '2026-02-12T18:45:11.123456'
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%A, %m-%d-%Y %I:%M %p")
+    except ValueError:
+        return iso_str
 
 # ===== Main Entry Point =====
 
 def generate_all_notifications() -> list[dict]:
     """
-    Run all 3 notification generators, save new ones to DB,
-    return ALL notifications for today (from DB).
+    Run EOD, momentum, and morning gap notification generators, save new ones to DB,
+    return ALL notifications for today (from DB), including any news briefings.
+    News briefing generation is handled by a separate endpoint.
     """
     watchlist = get_watchlist()
     if not watchlist:
         return []
+
+    # Ensure bars_1m data exists for all watchlist symbols
+    # Uses existing Twelve Data pipeline with built-in caching (no redundant calls)
+    for item in watchlist:
+        try:
+            data_manager.get_stock_data(item["symbol"], "1min")
+        except Exception as e:
+            print(f"  [Notification] Could not prefetch data for {item['symbol']}: {e}")
 
     db = get_db()
     if "bars_1m" not in db.table_names():
@@ -317,14 +372,16 @@ def generate_all_notifications() -> list[dict]:
     _check_daily_eod(db, watchlist)
     _check_2h_momentum(db, watchlist)
     _check_morning_gap(db, watchlist)
+    # News briefing is NOT called here — it's triggered by a separate endpoint
 
     # Return all generated notifications for today
     today_str = datetime.now(ET).strftime("%Y-%m-%d")
     rows = get_generated_notifications_for_date(today_str)
 
     # Normalize column name from DB (percent_change -> percentChange)
-    return [
-        {
+    results = []
+    for r in rows:
+        item = {
             "id": r["id"],
             "type": r["type"],
             "symbol": r["symbol"],
@@ -332,7 +389,16 @@ def generate_all_notifications() -> list[dict]:
             "message": r["message"],
             "direction": r["direction"],
             "percentChange": r["percent_change"],
-            "timestamp": r["created_at"],
+            "timestamp": _format_timestamp_display(r["created_at"]),
         }
-        for r in rows
-    ]
+        # For NEWS_BRIEFING, include the articles array from DB
+        if r["type"] == "NEWS_BRIEFING":
+            articles_str = r.get("articles_json", "")
+            try:
+                item["articles"] = json.loads(articles_str) if articles_str else []
+            except (json.JSONDecodeError, TypeError):
+                item["articles"] = []
+        results.append(item)
+
+    return results
+

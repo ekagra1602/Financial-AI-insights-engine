@@ -30,6 +30,8 @@ from routers.watchlist import router as watchlist_router
 app.include_router(watchlist_router, prefix="/api/v1")
 from routers.notifications import router as notifications_router
 app.include_router(notifications_router, prefix="/api/v1")
+from routers.news_briefing import router as news_briefing_router
+app.include_router(news_briefing_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():

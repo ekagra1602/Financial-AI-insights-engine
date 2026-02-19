@@ -92,12 +92,14 @@ class DataManager:
                 # Exception: Early close days? Ignoring for MVP.
                 
                 # If our data is OLDER than the last close, we need to fetch
-                if last_dt < last_market_close:
+                # Use 2-min tolerance: 1-min bars end at 3:59 PM, not 4:00 PM
+                staleness_tolerance = timedelta(minutes=2)
+                if last_dt < (last_market_close - staleness_tolerance):
                     print(f"  [CLOSED] Data stale (Last: {last_dt}, Market Close: {last_market_close}). Fetching...")
                     fetch_needed = True
                     start_date = latest_ts
                 else:
-                    print(f"  [CLOSED] Data complete (Last: {last_dt} >= Close: {last_market_close}). Cache HIT.")
+                    print(f"  [CLOSED] Data complete (Last: {last_dt} ~= Close: {last_market_close}). Cache HIT.")
 
         if fetch_needed:
             print(f"Fetching {symbol} {interval} from {start_date}...")

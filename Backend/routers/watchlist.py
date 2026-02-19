@@ -26,7 +26,8 @@ def read_watchlist():
         result.append({
             **item,
             "price": current_price,
-            "change": percent_change
+            "change": percent_change,
+            "news_notify_count": item.get("news_notify_count", 0) or 0,
         })
     return result
 
@@ -39,3 +40,5 @@ def add_item(item: WatchlistItem):
 def delete_item(symbol: str):
     remove_from_watchlist(symbol)
     return {"message": "Removed from watchlist"}
+
+

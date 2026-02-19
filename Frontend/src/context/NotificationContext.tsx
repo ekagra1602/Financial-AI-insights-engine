@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { fetchNotifications, dismissNotification as apiDismiss, clearAllNotifications as apiClearAll, Notification } from '../services/api';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { fetchNotifications, dismissNotification as apiDismiss, clearAllNotifications as apiClearAll, triggerNewsBriefingGeneration, Notification } from '../services/api';
 
 interface NotificationContextType {
     notifications: Notification[];
@@ -18,14 +18,13 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const lastBriefingDate = useRef<string>('');
 
     // Load and stamp notifications
     const loadNotifications = async () => {
         setLoading(true);
         try {
             const data = await fetchNotifications();
-            // Backend now provides nice descriptive messages, so raw timestamp display might be secondary
-            // but we still want to sort/display them nicely.
             setNotifications(data);
         } catch (err) {
             console.error("Failed to load notifications", err);
@@ -38,6 +37,32 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     useEffect(() => {
         loadNotifications();
         const interval = setInterval(loadNotifications, 30_000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // 10 AM ET daily timer for news briefing generation
+    useEffect(() => {
+        const check10AM = () => {
+            // Get current ET time
+            const now = new Date();
+            const etString = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+            const etDate = new Date(etString);
+            const hour = etDate.getHours();
+            const minute = etDate.getMinutes();
+            const todayStr = etDate.toISOString().slice(0, 10);
+
+            // Trigger at 10:00 AM ET, but only once per day
+            if (hour === 10 && minute === 0 && lastBriefingDate.current !== todayStr) {
+                lastBriefingDate.current = todayStr;
+                console.log('[News Briefing] 10 AM ET — triggering generation');
+                triggerNewsBriefingGeneration();
+                // Reload notifications after a delay to pick up the new briefings
+                setTimeout(loadNotifications, 60_000);
+            }
+        };
+
+        // Check every 60 seconds
+        const interval = setInterval(check10AM, 60_000);
         return () => clearInterval(interval);
     }, []);
 

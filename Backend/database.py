@@ -2,11 +2,17 @@ import sqlite_utils
 from datetime import datetime
 import pandas as pd
 import os
+import sqlite3
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "stock_data.db")
 
 def get_db():
-    return sqlite_utils.Database(DB_PATH)
+    # Use WAL mode for concurrent read/write and a 10s busy timeout
+    # to avoid "database is locked" errors from concurrent requests
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
+    return sqlite_utils.Database(conn)
 
 def init_db():
     db = get_db()
@@ -56,8 +62,15 @@ def init_db():
             "symbol": str,
             "name": str,
             "added_at": str,
+            "news_notify_count": int,  # 0/1/2/3 briefings per day
         }, pk="symbol")
         print("Created watchlist table")
+    else:
+        # Migration: add news_notify_count if missing
+        cols = {col.name for col in db["watchlist"].columns}
+        if "news_notify_count" not in cols:
+            db.execute("ALTER TABLE watchlist ADD COLUMN news_notify_count INTEGER DEFAULT 0")
+            print("Added news_notify_count column to watchlist")
 
     # Table for dismissed notifications
     if "dismissed_notifications" not in db.table_names():
@@ -71,23 +84,43 @@ def init_db():
     if "generated_notifications" not in db.table_names():
         db["generated_notifications"].create({
             "id": str,
-            "type": str,       # DAILY_EOD, MOMENTUM_2H, MORNING_GAP
+            "type": str,       # DAILY_EOD, MOMENTUM_2H, MORNING_GAP, NEWS_BRIEFING
             "symbol": str,
             "date": str,       # YYYY-MM-DD
             "title": str,
             "message": str,
-            "direction": str,  # up / down
+            "direction": str,  # up / down / neutral
             "percent_change": float,
             "created_at": str,
+            "articles_json": str,  # JSON array for NEWS_BRIEFING articles
         }, pk="id")
         print("Created generated_notifications table")
+    else:
+        # Migration: add articles_json if missing
+        cols = {col.name for col in db["generated_notifications"].columns}
+        if "articles_json" not in cols:
+            db.execute("ALTER TABLE generated_notifications ADD COLUMN articles_json TEXT DEFAULT ''")
+            print("Added articles_json column to generated_notifications")
+
+    # Table for tracking sent news articles (dedup)
+    if "news_briefing_articles" not in db.table_names():
+        db["news_briefing_articles"].create({
+            "id": str,          # {symbol}_NEWS_{url_hash}
+            "symbol": str,
+            "url_hash": str,
+            "url": str,
+            "date": str,        # YYYY-MM-DD
+            "created_at": str,
+        }, pk="id")
+        print("Created news_briefing_articles table")
 
 def add_to_watchlist(symbol: str, name: str):
     db = get_db()
     db["watchlist"].upsert({
         "symbol": symbol,
         "name": name,
-        "added_at": datetime.now().isoformat()
+        "added_at": datetime.now().isoformat(),
+        "news_notify_count": 0,
     }, pk="symbol")
 
 def remove_from_watchlist(symbol: str):
@@ -97,6 +130,20 @@ def remove_from_watchlist(symbol: str):
 def get_watchlist():
     db = get_db()
     return list(db["watchlist"].rows)
+
+def update_news_notify_count(symbol: str, count: int):
+    """Update how many news briefings per day (0-3) for a ticker."""
+    db = get_db()
+    count = max(0, min(3, count))  # Clamp 0-3
+    db["watchlist"].update(symbol, {"news_notify_count": count})
+
+def get_news_notify_count(symbol: str) -> int:
+    db = get_db()
+    try:
+        row = next(db["watchlist"].rows_where("symbol = ?", [symbol]))
+        return row.get("news_notify_count", 0) or 0
+    except StopIteration:
+        return 0
 
 # ===== Dismissed Notifications =====
 
@@ -133,6 +180,7 @@ def save_generated_notification(notification: dict):
         "direction": notification["direction"],
         "percent_change": notification["percentChange"],
         "created_at": datetime.now().isoformat(),
+        "articles_json": notification.get("articles", ""),
     }, pk="id")
 
 def notification_exists(notification_id: str) -> bool:
@@ -152,6 +200,32 @@ def get_generated_notifications_for_date(date_str: str) -> list[dict]:
     if "generated_notifications" not in db.table_names():
         return []
     return list(db["generated_notifications"].rows_where("date = ?", [date_str]))
+
+# ===== News Briefing Article Tracking =====
+
+def news_article_already_sent(symbol: str, url_hash: str) -> bool:
+    """Check if we already sent a notification for this article."""
+    db = get_db()
+    if "news_briefing_articles" not in db.table_names():
+        return False
+    article_id = f"{symbol}_NEWS_{url_hash}"
+    try:
+        next(db["news_briefing_articles"].rows_where("id = ?", [article_id]))
+        return True
+    except StopIteration:
+        return False
+
+def save_news_article_sent(symbol: str, url_hash: str, url: str, date_str: str):
+    """Mark an article as sent for a symbol."""
+    db = get_db()
+    db["news_briefing_articles"].upsert({
+        "id": f"{symbol}_NEWS_{url_hash}",
+        "symbol": symbol,
+        "url_hash": url_hash,
+        "url": url,
+        "date": date_str,
+        "created_at": datetime.now().isoformat(),
+    }, pk="id")
 
 def save_bars_1d(symbol: str, df: pd.DataFrame):
     if df.empty:

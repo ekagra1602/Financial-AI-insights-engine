@@ -148,15 +148,23 @@ export const removeFromWatchlist = async (symbol: string) => {
 
 // ===== Notifications =====
 
+export interface NewsArticle {
+  headline: string;
+  summary: string;
+  url: string;
+  source: string;
+}
+
 export interface Notification {
   id: string;
-  type: 'DAILY_EOD' | 'MOMENTUM_2H' | 'MORNING_GAP';
+  type: 'DAILY_EOD' | 'MOMENTUM_2H' | 'MORNING_GAP' | 'NEWS_BRIEFING';
   symbol: string;
   title: string;
   message: string;
-  direction: 'up' | 'down';
+  direction: 'up' | 'down' | 'neutral';
   percentChange: number;
   timestamp: string;
+  articles?: NewsArticle[];  // Only for NEWS_BRIEFING
 }
 
 export const fetchNotifications = async (): Promise<Notification[]> => {
@@ -186,3 +194,32 @@ export const clearAllNotifications = async (): Promise<void> => {
   });
 };
 
+// ===== News Briefing (Dedicated Endpoints) =====
+
+export const toggleNewsBriefing = async (symbol: string, enabled: boolean): Promise<void> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/news-briefing/toggle/${symbol}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    if (!res.ok) {
+      console.error(`Failed to toggle news briefing for ${symbol}: ${res.status} ${res.statusText}`);
+    }
+  } catch (err) {
+    console.error(`Error toggling news briefing for ${symbol}:`, err);
+  }
+};
+
+export const triggerNewsBriefingGeneration = async (): Promise<void> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/news-briefing/generate`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      console.error(`Failed to trigger news briefing generation: ${res.status}`);
+    }
+  } catch (err) {
+    console.error('Error triggering news briefing generation:', err);
+  }
+};

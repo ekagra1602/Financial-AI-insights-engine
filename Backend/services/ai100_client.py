@@ -283,3 +283,50 @@ def _mock_response(text: str) -> dict:
         "tone": "neutral",
         "keywords": [],
     }
+
+
+# ─── Lightweight Summary-Only Function ───────────────────────────────────────
+
+SUMMARY_ONLY_PROMPT = """Summarize the following financial news article in 1-2 sentences. Be concise and factual. Return ONLY the summary text, nothing else.
+
+Article:
+{article_text}"""
+
+def summarize_only(text: str) -> str:
+    """
+    Lightweight summary: 1-2 sentences, no sentiment/tone/keywords.
+    Used for news briefing notifications.
+    Returns just the summary string.
+    """
+    if not AI100_API_KEY:
+        return text[:200].strip() + ("..." if len(text) > 200 else "")
+
+    url = f"{AI100_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {AI100_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": AI100_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a concise financial news summarizer. Return only the summary."},
+            {"role": "user", "content": SUMMARY_ONLY_PROMPT.format(article_text=text[:3000])},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 150,
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=20)
+        if response.status_code == 200:
+            data = response.json()
+            content = data["choices"][0]["message"].get("content", "").strip()
+            if content:
+                return content
+    except Exception as e:
+        print(f"  [summarize_only] Error: {e}")
+
+    # Fallback: truncate original text
+    return text[:200].strip() + ("..." if len(text) > 200 else "")
+
