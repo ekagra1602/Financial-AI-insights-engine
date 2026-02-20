@@ -28,8 +28,7 @@ from routers.stock_data import router as stock_router
 app.include_router(stock_router, prefix="/api/v1")
 from routers.watchlist import router as watchlist_router
 app.include_router(watchlist_router, prefix="/api/v1")
-from routers.tickers import router as tickers_router
-app.include_router(tickers_router, prefix="/api/v1")
+
 
 @app.get("/")
 async def root():

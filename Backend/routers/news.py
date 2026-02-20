@@ -10,7 +10,8 @@ news_processor = NewsProcessor()
 async def get_company_news_summary(
     ticker: str,
     from_date: Optional[str] = None,
-    to_date: Optional[str] = None
+    to_date: Optional[str] = None,
+    force_refresh: bool = False
 ):
     """
     Get summarized news for a specific company ticker.
@@ -23,19 +24,18 @@ async def get_company_news_summary(
         from_date = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
         
     try:
-        news = news_processor.fetch_and_process_news(ticker, from_date, to_date)
+        news = news_processor.fetch_and_process_news(ticker, from_date, to_date, force_refresh=force_refresh)
         return news
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/news")
-async def get_market_news_summary():
+async def get_market_news_summary(force_refresh: bool = False):
     """
     Get summarized general market news (trending).
     """
     try:
-        # Pass None as ticker to fetch general news
-        news = news_processor.fetch_and_process_news(ticker=None)
+        news = news_processor.fetch_and_process_news(ticker=None, force_refresh=force_refresh)
         return news
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -63,7 +63,10 @@ async def get_similar_news(
             from services.embeddings import get_embedding
             summary = article.get('summary', '')
             headline = article.get('headline', '')
-            text_to_embed = f"{headline} {summary}"
+            ticker = article.get('ticker', '')
+            keywords = article.get('keywords', [])
+            kw_str = ' '.join(keywords) if isinstance(keywords, list) else ''
+            text_to_embed = f"{ticker} {headline} {summary} {kw_str}"
             embedding = get_embedding(text_to_embed)
             
             # Save it back to DB for future use

@@ -17,6 +17,10 @@ returns table (
   headline text,
   summary text,
   ticker text,
+  source text,
+  url text,
+  datetime bigint,
+  sentiment text,
   similarity float
 )
 language plpgsql
@@ -28,6 +32,10 @@ begin
     news_articles.headline,
     news_articles.summary,
     news_articles.ticker,
+    news_articles.source,
+    news_articles.url,
+    news_articles.datetime,
+    news_articles.sentiment,
     1 - (news_articles.embedding <=> query_embedding) as similarity
   from news_articles
   where 1 - (news_articles.embedding <=> query_embedding) > match_threshold

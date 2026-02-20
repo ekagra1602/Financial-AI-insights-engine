@@ -4,7 +4,7 @@ import json
 import os
 import re
 from newspaper import Article
-from services.finnhub_client import get_company_news
+from services.finnhub_client import get_company_news, get_finnhub_profile
 import nltk
 
 # Download necessary NLTK data
@@ -15,7 +15,7 @@ except LookupError:
 
 from services.ai100_client import analyze_text
 from services.embeddings import get_embedding
-from services.finnhub_client import get_company_news, get_market_news
+from services.finnhub_client import get_company_news, get_market_news, get_finnhub_profile
 from services.supabase_client import SupabaseClient
 
 # ... (imports)
@@ -23,14 +23,12 @@ from services.supabase_client import SupabaseClient
 class NewsProcessor:
     def __init__(self):
         self.supabase = SupabaseClient()
-        self.company_map = {}
-        # Load helper map (lazy load later or load now?)
-        # Let's load it on demand to avoid long startups
+        self.company_name_cache = {}  # In-memory cache: ticker -> company name
 
-    def fetch_and_process_news(self, ticker: str = None, from_date: str = None, to_date: str = None):
+    def fetch_and_process_news(self, ticker: str = None, from_date: str = None, to_date: str = None, force_refresh: bool = False):
         """
         Fetches news from Finnhub, dedupes, scrapes, and summarizes using AI100.
-        Checks Supabase cache first.
+        Checks Supabase cache first (unless force_refresh is True).
         """
         # --- STRATEGY: Prioritize Freshness (Today) ---
         
@@ -42,17 +40,19 @@ class NewsProcessor:
         # If user explicitly asked for a range that is NOT just "recent", respect it.
         # But usually from_date defaults to 7 days ago. We want to tighten that default check.
         
-        # Check DB for VERY RECENT news (last 24 hours) first
-        try:
-            # Check for articles from yesterday onwards (last ~24-48h window)
-            fresh_news = self.supabase.get_recent_articles(ticker, limit=5, from_date=yesterday_date)
-            if fresh_news and len(fresh_news) >= 3:
-                # If we have at least 3 fresh articles, return them immediately.
-                # This avoids API calls if we already have today's news.
-                print(f"Fresh Cache HIT for ticker {ticker}: Found {len(fresh_news)} recent articles.")
-                return fresh_news
-        except Exception as e:
-            print(f"Error checking DB fresh cache: {e}")
+        # Check DB for VERY RECENT news (last 24 hours) first — skip if force_refresh
+        if not force_refresh:
+            try:
+                # Check for articles from yesterday onwards (last ~24-48h window)
+                fresh_news = self.supabase.get_recent_articles(ticker, limit=5, from_date=yesterday_date)
+                if fresh_news and len(fresh_news) >= 5:
+                    # Only return cache if we have the full 5 articles
+                    print(f"Fresh Cache HIT for ticker {ticker}: Found {len(fresh_news)} recent articles.")
+                    return fresh_news
+            except Exception as e:
+                print(f"Error checking DB fresh cache: {e}")
+        else:
+            print(f"🔄 Force refresh requested for ticker {ticker} — skipping cache")
 
 
         # 2. Cache Miss (or not enough fresh news): Fetch from API
@@ -122,29 +122,27 @@ class NewsProcessor:
             # Process with Qualcomm AI100
             ai_result = analyze_text(content)
             
+            # If AI100 failed, skip this article and try the next one
+            if ai_result is None:
+                print(f"⏭️ [AI100] Skipping article (AI100 failed): {item.get('headline', url)}")
+                continue
+            
             summary = ai_result.get('summary', '')
             if not summary:
-                 summary = content[:300] + "..." if len(content) > 300 else content
-
-            # Generate vector embedding for similarity search
-            # We embed the summary + headline for better context
-            text_to_embed = f"{item.get('headline', '')} {summary}"
-            embedding = get_embedding(text_to_embed)
+                print(f"⏭️ [AI100] Skipping article (empty summary): {item.get('headline', url)}")
+                continue
 
             # Check Relevance (Post-processing)
             # If ticker is specified, we ONLY want to save/return if it's relevant.
             final_ticker = "Market"
             is_relevant = True
-            
+            headline = item.get('headline', '')
+            keywords = ai_result.get('keywords', [])
+            company_name = ''
+
             if ticker:
                 final_ticker = ticker
-                # Load map if empty
-                if not self.company_map:
-                    self.company_map = self._load_company_names()
-                
-                company_name = self.company_map.get(ticker, "")
-                headline = item.get('headline', '')
-                keywords = ai_result.get('keywords', [])
+                company_name = self._get_company_name(ticker)
                 
                 if self._is_relevant(ticker, company_name, summary, keywords, headline):
                     final_ticker = ticker
@@ -154,6 +152,12 @@ class NewsProcessor:
                     final_ticker = "Market" # Still save it, but associated with general Market
             else:
                 final_ticker = "Market"
+
+            # Generate vector embedding for similarity search
+            # Enrich with ticker, company name, and keywords so related entities
+            # (e.g. "Meta" and "Zuckerberg") cluster closer in vector space
+            text_to_embed = f"{final_ticker} {company_name} {headline} {summary} {' '.join(keywords)}"
+            embedding = get_embedding(text_to_embed)
 
             article_data = {
                 "url_hash": url_hash,
@@ -178,22 +182,23 @@ class NewsProcessor:
             
         return processed_news
 
-    def _load_company_names(self):
+    def _get_company_name(self, ticker: str) -> str:
         """
-        Loads company names from JSON file into a dict {ticker: title}.
+        Gets the company name for a ticker via Finnhub profile API.
+        Caches results in-memory to avoid repeated API calls.
         """
+        if ticker in self.company_name_cache:
+            return self.company_name_cache[ticker]
+        
         try:
-            file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'company_tickers.json')
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-                # Data structure: {"0": {"ticker": "NVDA", "title": "NVIDIA CORP"}, ...}
-                mapping = {}
-                for item in data.values():
-                    mapping[item['ticker']] = item['title']
-                return mapping
+            profile = get_finnhub_profile(ticker)
+            name = profile.get('name', '')
+            self.company_name_cache[ticker] = name
+            return name
         except Exception as e:
-            print(f"Error loading company tickers: {e}")
-            return {}
+            print(f"Error fetching company name for {ticker}: {e}")
+            self.company_name_cache[ticker] = ''  # Cache empty to avoid repeated failures
+            return ''
 
     def _is_relevant(self, ticker, company_name, summary, keywords, headline):
         """

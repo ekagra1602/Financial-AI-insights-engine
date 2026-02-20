@@ -51,9 +51,10 @@ export const fetchKeyStatistics = async (
   }
 };
 
-export const fetchCompanyNews = async (ticker: string) => {
+export const fetchCompanyNews = async (ticker: string, forceRefresh = false) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/news/${ticker}`);
+    const params = forceRefresh ? '?force_refresh=true' : '';
+    const response = await fetch(`${API_BASE_URL}/news/${ticker}${params}`);
     if (!response.ok) {
       throw new Error('Failed to fetch news');
     }
@@ -64,9 +65,10 @@ export const fetchCompanyNews = async (ticker: string) => {
   }
 };
 
-export const fetchMarketNews = async () => {
+export const fetchMarketNews = async (forceRefresh = false) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/news`);
+    const params = forceRefresh ? '?force_refresh=true' : '';
+    const response = await fetch(`${API_BASE_URL}/news${params}`);
     if (!response.ok) {
       throw new Error('Failed to fetch market news');
     }
