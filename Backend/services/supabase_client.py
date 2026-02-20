@@ -63,6 +63,7 @@ class SupabaseClient:
                 # If ticker is None or "Market", fetch general market news
                 query = query.eq("ticker", "Market")
             
+    
             if from_date:
                 # Convert from_date (YYYY-MM-DD) to Unix timestamp
                 try:
@@ -84,4 +85,36 @@ class SupabaseClient:
             return response.data
         except Exception as e:
             print(f"Error fetching recent articles from Supabase: {e}")
+            return []
+
+    def save_embedding(self, url_hash: str, embedding: list):
+        """
+        Updates an article with its vector embedding.
+        """
+        if not self.client:
+            return
+            
+        try:
+            self.client.table("news_articles").update({"embedding": embedding}).eq("url_hash", url_hash).execute()
+        except Exception as e:
+            print(f"Error saving embedding to Supabase: {e}")
+
+    def search_similar_articles(self, query_embedding: list, match_threshold: float = 0.5, match_count: int = 5):
+        """
+        Calls the 'match_articles' RPC function to find similar articles.
+        Assumes the function exists in Supabase (created via raw SQL or Dashboard).
+        """
+        if not self.client:
+            return []
+            
+        try:
+            rpc_params = {
+                "query_embedding": query_embedding,
+                "match_threshold": match_threshold,
+                "match_count": match_count
+            }
+            response = self.client.rpc("match_articles", rpc_params).execute()
+            return response.data
+        except Exception as e:
+            print(f"Error searching similar articles via RPC: {e}")
             return []

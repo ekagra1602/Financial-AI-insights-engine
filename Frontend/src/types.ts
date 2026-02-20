@@ -43,6 +43,7 @@ export interface SummarizedNewsArticle {
   keywords: string[];
   url: string;
   ticker: string;
+  url_hash?: string; // Added for similarity search
 }
 
 export interface RelatedArticle {

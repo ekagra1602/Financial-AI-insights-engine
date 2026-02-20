@@ -59,29 +59,6 @@ def init_db():
         }, pk="symbol")
         print("Created watchlist table")
 
-    # Table for dismissed notifications
-    if "dismissed_notifications" not in db.table_names():
-        db["dismissed_notifications"].create({
-            "notification_id": str,
-            "dismissed_at": str,
-        }, pk="notification_id")
-        print("Created dismissed_notifications table")
-
-    # Table for generated notifications (trigger-once persistence)
-    if "generated_notifications" not in db.table_names():
-        db["generated_notifications"].create({
-            "id": str,
-            "type": str,       # DAILY_EOD, MOMENTUM_2H, MORNING_GAP
-            "symbol": str,
-            "date": str,       # YYYY-MM-DD
-            "title": str,
-            "message": str,
-            "direction": str,  # up / down
-            "percent_change": float,
-            "created_at": str,
-        }, pk="id")
-        print("Created generated_notifications table")
-
 def add_to_watchlist(symbol: str, name: str):
     db = get_db()
     db["watchlist"].upsert({
@@ -97,61 +74,6 @@ def remove_from_watchlist(symbol: str):
 def get_watchlist():
     db = get_db()
     return list(db["watchlist"].rows)
-
-# ===== Dismissed Notifications =====
-
-def dismiss_notification(notification_id: str):
-    db = get_db()
-    db["dismissed_notifications"].upsert({
-        "notification_id": notification_id,
-        "dismissed_at": datetime.now().isoformat()
-    }, pk="notification_id")
-
-def get_dismissed_notification_ids() -> set:
-    db = get_db()
-    if "dismissed_notifications" not in db.table_names():
-        return set()
-    return {row["notification_id"] for row in db["dismissed_notifications"].rows}
-
-def clear_all_dismissed():
-    db = get_db()
-    if "dismissed_notifications" in db.table_names():
-        db["dismissed_notifications"].delete_where()
-
-# ===== Generated Notifications =====
-
-def save_generated_notification(notification: dict):
-    """Save a generated notification to the DB (trigger-once)."""
-    db = get_db()
-    db["generated_notifications"].upsert({
-        "id": notification["id"],
-        "type": notification["type"],
-        "symbol": notification["symbol"],
-        "date": notification["date"],
-        "title": notification["title"],
-        "message": notification["message"],
-        "direction": notification["direction"],
-        "percent_change": notification["percentChange"],
-        "created_at": datetime.now().isoformat(),
-    }, pk="id")
-
-def notification_exists(notification_id: str) -> bool:
-    """Check if a notification has already been generated."""
-    db = get_db()
-    if "generated_notifications" not in db.table_names():
-        return False
-    try:
-        next(db["generated_notifications"].rows_where("id = ?", [notification_id]))
-        return True
-    except StopIteration:
-        return False
-
-def get_generated_notifications_for_date(date_str: str) -> list[dict]:
-    """Get all generated notifications for a given date."""
-    db = get_db()
-    if "generated_notifications" not in db.table_names():
-        return []
-    return list(db["generated_notifications"].rows_where("date = ?", [date_str]))
 
 def save_bars_1d(symbol: str, df: pd.DataFrame):
     if df.empty:

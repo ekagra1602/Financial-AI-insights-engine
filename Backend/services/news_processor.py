@@ -1,7 +1,10 @@
 import hashlib
 import datetime
+import json
+import os
+import re
 from newspaper import Article
-from services.finnhub_client import get_company_news
+from services.finnhub_client import get_company_news, get_finnhub_profile
 import nltk
 
 # Download necessary NLTK data
@@ -11,7 +14,8 @@ except LookupError:
     nltk.download('punkt')
 
 from services.ai100_client import analyze_text
-from services.finnhub_client import get_company_news, get_market_news
+from services.embeddings import get_embedding
+from services.finnhub_client import get_company_news, get_market_news, get_finnhub_profile
 from services.supabase_client import SupabaseClient
 
 # ... (imports)
@@ -19,33 +23,61 @@ from services.supabase_client import SupabaseClient
 class NewsProcessor:
     def __init__(self):
         self.supabase = SupabaseClient()
+        self.company_name_cache = {}  # In-memory cache: ticker -> company name
 
     def fetch_and_process_news(self, ticker: str = None, from_date: str = None, to_date: str = None, force_refresh: bool = False):
         """
         Fetches news from Finnhub, dedupes, scrapes, and summarizes using AI100.
-        Checks Supabase cache first unless force_refresh is True.
+        Checks Supabase cache first (unless force_refresh is True).
         """
-        # 1. Try to get from Supabase first (Cache Hit) — skip if force_refresh
+        # --- STRATEGY: Prioritize Freshness (Today) ---
+        
+        # 1. Determine "Today" (approximate, based on server time or UTC)
+        # We want to check if we have enough articles from last 24 hours first.
+        today_date = datetime.date.today().isoformat()
+        yesterday_date = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        
+        # If user explicitly asked for a range that is NOT just "recent", respect it.
+        # But usually from_date defaults to 7 days ago. We want to tighten that default check.
+        
+        # Check DB for VERY RECENT news (last 24 hours) first — skip if force_refresh
         if not force_refresh:
             try:
-                db_news = self.supabase.get_recent_articles(ticker, limit=5, from_date=from_date)
-                if db_news and len(db_news) > 0:
-                    print(f"Cache HIT for ticker {ticker}: Found {len(db_news)} articles in DB.")
-                    return db_news
+                # Check for articles from yesterday onwards (last ~24-48h window)
+                fresh_news = self.supabase.get_recent_articles(ticker, limit=5, from_date=yesterday_date)
+                if fresh_news and len(fresh_news) >= 5:
+                    # Only return cache if we have the full 5 articles
+                    print(f"Fresh Cache HIT for ticker {ticker}: Found {len(fresh_news)} recent articles.")
+                    return fresh_news
             except Exception as e:
-                print(f"Error checking DB cache: {e}")
+                print(f"Error checking DB fresh cache: {e}")
         else:
-            print(f"🔄 Force refresh requested for ticker {ticker} — skipping cache.")
+            print(f"🔄 Force refresh requested for ticker {ticker} — skipping cache")
 
-        # 2. Cache Miss or insufficient data: Fetch from API
-        print(f"Cache MISS for ticker {ticker}: Fetching from API...")
+
+        # 2. Cache Miss (or not enough fresh news): Fetch from API
+        # We only fetch if we don't have enough fresh data.
+        print(f"Fresh Cache MISS for ticker {ticker}: Fetching from API...")
         try:
             if ticker:
-                raw_news = get_company_news(ticker, from_date, to_date)
+                # Ask API specifically for recent news (e.g., last 3 days to catch up)
+                # Ensure we don't ask for too old data if we want freshness
+                api_from = yesterday_date if not from_date else from_date 
+                raw_news = get_company_news(ticker, api_from, to_date)
             else:
                 raw_news = get_market_news("general")
         except Exception as e:
             print(f"Error fetching news (ticker={ticker}): {e}")
+            # If API fails, try to fallback to ANY cache (even if older than yesterday)
+            try:
+                 # Fallback: Get whatever we have in DB for the requested period (last 7 days default)
+                fallback_limit = 5
+                fallback_news = self.supabase.get_recent_articles(ticker, limit=fallback_limit, from_date=from_date)
+                if fallback_news:
+                     print(f"API Failed, returning older cached news for {ticker}")
+                     return fallback_news
+            except Exception as inner_e:
+                print(f"Fallback cache failed: {inner_e}")
             return []
 
         processed_news = []
@@ -69,16 +101,6 @@ class NewsProcessor:
                 continue
             seen_urls.add(url_hash)
             
-            # Check if this specific article is already in DB (to avoid re-processing)
-            # Even though we checked DB for *any* articles above, we might have missed this specific one
-            # if we are in a "partial cache" state or if we decided to re-fetch for some reason.
-            # However, with the new logic, if we found ANY articles above, we returned.
-            # So if we are here, it means we found NO articles in DB (or error).
-            # So we probably don't need to check DB again for each article, 
-            # UNLESS the DB check above failed or returned 0 but some articles actually exist 
-            # (e.g. from_date mismatch).
-            # But let's keep the check to be safe and avoid duplicates if we are backfilling.
-            
             cached_article = self.supabase.get_article_by_hash(url_hash)
             if cached_article:
                 # Cache Hit: Use stored data
@@ -91,19 +113,51 @@ class NewsProcessor:
             # 3. Process and Store
             
             # Scrape content
-            scraped_content = self._scrape_content(url)
-            finnhub_summary = item.get('summary', '')
+            content = self._scrape_content(url)
             
-            # Validate scraped content — check for garbage responses
-            # (JavaScript walls, cookie consent pages, error messages, etc.)
-            content = self._pick_best_content(scraped_content, finnhub_summary, url)
+            # Fallback to Finnhub summary if scraping fails or returns empty
+            if not content:
+                content = item.get('summary', '')
             
             # Process with Qualcomm AI100
             ai_result = analyze_text(content)
             
+            # If AI100 failed, skip this article and try the next one
+            if ai_result is None:
+                print(f"⏭️ [AI100] Skipping article (AI100 failed): {item.get('headline', url)}")
+                continue
+            
             summary = ai_result.get('summary', '')
             if not summary:
-                 summary = content[:300] + "..." if len(content) > 300 else content
+                print(f"⏭️ [AI100] Skipping article (empty summary): {item.get('headline', url)}")
+                continue
+
+            # Check Relevance (Post-processing)
+            # If ticker is specified, we ONLY want to save/return if it's relevant.
+            final_ticker = "Market"
+            is_relevant = True
+            headline = item.get('headline', '')
+            keywords = ai_result.get('keywords', [])
+            company_name = ''
+
+            if ticker:
+                final_ticker = ticker
+                company_name = self._get_company_name(ticker)
+                
+                if self._is_relevant(ticker, company_name, summary, keywords, headline):
+                    final_ticker = ticker
+                else:
+                    is_relevant = False
+                    print(f"Skipping irrelevant article for {ticker}: {headline}. Storing as 'Market'.")
+                    final_ticker = "Market" # Still save it, but associated with general Market
+            else:
+                final_ticker = "Market"
+
+            # Generate vector embedding for similarity search
+            # Enrich with ticker, company name, and keywords so related entities
+            # (e.g. "Meta" and "Zuckerberg") cluster closer in vector space
+            text_to_embed = f"{final_ticker} {company_name} {headline} {summary} {' '.join(keywords)}"
+            embedding = get_embedding(text_to_embed)
 
             article_data = {
                 "url_hash": url_hash,
@@ -115,82 +169,76 @@ class NewsProcessor:
                 "sentiment": ai_result.get('sentiment', 'neutral'),
                 "tone": ai_result.get('tone', 'neutral'),
                 "keywords": ai_result.get('keywords', []),
-                "ticker": ticker if ticker else "Market"
+                "ticker": final_ticker,
+                "embedding": embedding 
             }
             
             # Save to Supabase
             self.supabase.save_article(article_data)
 
-            processed_news.append(article_data)
+            # Only add to returned list if it was relevant to the requested ticker
+            if is_relevant:
+                processed_news.append(article_data)
             
         return processed_news
 
-    def _pick_best_content(self, scraped_content: str, finnhub_summary: str, url: str) -> str:
+    def _get_company_name(self, ticker: str) -> str:
         """
-        Decides which content to send to the AI100 for analysis.
-        Detects garbage scraped content (JavaScript walls, cookie consent, error pages, etc.)
-        and falls back to the Finnhub API summary when scraping fails.
+        Gets the company name for a ticker via Finnhub profile API.
+        Caches results in-memory to avoid repeated API calls.
         """
-        # Indicators that the scraped content is garbage, not a real article
-        GARBAGE_INDICATORS = [
-            "enable javascript",
-            "enable cookies",
-            "javascript is disabled",
-            "cookies are disabled",
-            "please enable",
-            "your browser",
-            "ad blocker",
-            "adblock",
-            "subscribe to continue",
-            "subscription required",
-            "sign in to read",
-            "log in to continue",
-            "access denied",
-            "403 forbidden",
-            "404 not found",
-            "page not found",
-            "captcha",
-            "are you a robot",
-            "verify you are human",
-            "consent to cookies",
-            "cookie policy",
-            "gdpr",
-            "we use cookies",
-            "accept cookies",
-        ]
+        if ticker in self.company_name_cache:
+            return self.company_name_cache[ticker]
+        
+        try:
+            profile = get_finnhub_profile(ticker)
+            name = profile.get('name', '')
+            self.company_name_cache[ticker] = name
+            return name
+        except Exception as e:
+            print(f"Error fetching company name for {ticker}: {e}")
+            self.company_name_cache[ticker] = ''  # Cache empty to avoid repeated failures
+            return ''
 
-        MIN_ARTICLE_LENGTH = 100  # Minimum chars for a valid article
+    def _is_relevant(self, ticker, company_name, summary, keywords, headline):
+        """
+        Checks if the article is relevant to the ticker/company.
+        """
+        if not ticker or ticker == "Market":
+            return True
+            
+        ticker_upper = ticker.upper()
+        
+        # Prepare search terms
+        search_terms = {ticker_upper}
+        
+        if company_name:
+            # Clean company name: Remove Inc, Corp, Ltd, etc.
+            import re
+            clean_name = re.sub(r'(?i)\s+(inc\.?|corp\.?|co\.?|ltd\.?|plc|group|holdings|technologies|solutions)\b.*', '', company_name)
+            clean_name = clean_name.strip()
+            if len(clean_name) > 2: # Avoid tiny names
+                search_terms.add(clean_name.upper())
+        
+        # Check Keywords (Strong signal)
+        keyword_match = any(term in k.upper() for k in keywords for term in search_terms)
+        if keyword_match:
+            return True
+            
+        # Check Headline (Strong signal)
+        headline_upper = headline.upper()
+        headline_match = any(term in headline_upper for term in search_terms)
+        if headline_match:
+            return True
+            
+        # Check Summary (Medium signal)
+        # We want strict matching in summary to avoid casual mentions.
+        # But for now, let's trust if it appears.
+        summary_upper = summary.upper()
+        summary_match = any(term in summary_upper for term in search_terms)
+        
+        return summary_match
 
-        # Check if scraped content exists and is usable
-        if scraped_content and scraped_content.strip():
-            content_lower = scraped_content.lower().strip()
-
-            # Check for garbage indicators
-            is_garbage = any(indicator in content_lower for indicator in GARBAGE_INDICATORS)
-
-            # Check if content is too short to be a real article
-            is_too_short = len(content_lower) < MIN_ARTICLE_LENGTH
-
-            if is_garbage:
-                print(f"   ⚠️  Scraped content is garbage (error/wall page), using Finnhub summary instead")
-                print(f"   Garbage detected in: '{scraped_content[:80]}...'")
-            elif is_too_short:
-                print(f"   ⚠️  Scraped content too short ({len(content_lower)} chars), using Finnhub summary instead")
-            else:
-                # Scraped content looks good
-                print(f"   📄 Using scraped content ({len(scraped_content)} chars)")
-                return scraped_content
-        else:
-            print(f"   ⚠️  Scraping returned empty, using Finnhub summary")
-
-        # Fallback to Finnhub summary
-        if finnhub_summary and finnhub_summary.strip():
-            print(f"   📄 Using Finnhub summary ({len(finnhub_summary)} chars)")
-            return finnhub_summary
-
-        # Last resort: use the URL itself as minimal context
-        print(f"   ⚠️  No usable content for {url}")
-        return f"News article from {url}"
 
     def _hash_url(self, url: str) -> str:
         """
