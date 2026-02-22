@@ -17,6 +17,17 @@ export const searchStocks = async (
   }
 };
 
+export const fetchCompanies = async () => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/companies`);
+        if (!response.status.toString().startsWith('2')) return [];
+        return await response.json();
+    } catch (e) {
+        console.error(e);
+        return [];
+    }
+};
+
 export const fetchKeyStatistics = async (
   symbol: string
 ): Promise<KeyStatistics> => {
@@ -40,9 +51,10 @@ export const fetchKeyStatistics = async (
   }
 };
 
-export const fetchCompanyNews = async (ticker: string) => {
+export const fetchCompanyNews = async (ticker: string, forceRefresh = false) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/news/${ticker}`);
+    const params = forceRefresh ? '?force_refresh=true' : '';
+    const response = await fetch(`${API_BASE_URL}/news/${ticker}${params}`);
     if (!response.ok) {
       throw new Error('Failed to fetch news');
     }
@@ -53,9 +65,10 @@ export const fetchCompanyNews = async (ticker: string) => {
   }
 };
 
-export const fetchMarketNews = async () => {
+export const fetchMarketNews = async (forceRefresh = false) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/news`);
+    const params = forceRefresh ? '?force_refresh=true' : '';
+    const response = await fetch(`${API_BASE_URL}/news${params}`);
     if (!response.ok) {
       throw new Error('Failed to fetch market news');
     }
@@ -95,4 +108,50 @@ export const parseReminderText = async (text: string): Promise<ParsedReminderRes
     console.error('Error parsing reminder:', error);
     throw error;
   }
+};
+export const fetchSimilarNews = async (urlHash: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/news/similar/${urlHash}`);
+    if (!response.status.toString().startsWith('2')) {
+       // 404 or others -> return empty
+       return [];
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching similar news:', error);
+    return [];
+  }
+};
+
+export const fetchStockHistory = async (symbol: string, timeframe: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history/${symbol}?timeframe=${timeframe}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch stock history');
+    }
+    const json = await response.json();
+    return json.data;
+  } catch (error) {
+    console.error('Error fetching stock history:', error);
+    throw error;
+  }
+};
+
+export const getWatchlist = async () => {
+  const res = await fetch(`${API_BASE_URL}/watchlist`);
+  return await res.json();
+};
+
+export const addToWatchlist = async (symbol: string, name: string) => {
+  await fetch(`${API_BASE_URL}/watchlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol, name })
+  });
+};
+
+export const removeFromWatchlist = async (symbol: string) => {
+  await fetch(`${API_BASE_URL}/watchlist/${symbol}`, {
+    method: 'DELETE'
+  });
 };

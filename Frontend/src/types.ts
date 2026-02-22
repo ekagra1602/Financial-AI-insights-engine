@@ -13,6 +13,15 @@ export interface PortfolioDataPoint {
   value: number;
 }
 
+export interface StockDataPoint {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 export interface NewsArticle {
   id: string;
   source: string;
@@ -34,6 +43,7 @@ export interface SummarizedNewsArticle {
   keywords: string[];
   url: string;
   ticker: string;
+  url_hash?: string; // Added for similarity search
 }
 
 export interface RelatedArticle {
@@ -85,6 +95,27 @@ export interface KeyStatistics {
 // Stock Reminder Types
 export type ReminderConditionType = 'price_above' | 'price_below' | 'percent_change' | 'time_based' | 'custom';
 export type ReminderStatus = 'active' | 'triggered' | 'expired' | 'cancelled';
+export interface StockSymbol {
+  description: string;
+  displaySymbol: string;
+  symbol: string;
+  type: string;
+}
+// Sentiment Report Types
+export type ForecastHorizon = '1D' | '1W' | '1M' | '3M' | '6M';
+export type Stance = 'bullish' | 'neutral' | 'bearish';
+
+export interface ForecastQuantiles {
+  q10: number;
+  q50: number;
+  q90: number;
+}
+
+export interface ModelBreakdown {
+  modelName: string;
+  weight: number;
+  contribution: number;
+}
 
 export interface ReminderCondition {
   type: ReminderConditionType;
@@ -116,4 +147,12 @@ export interface ReminderAlert {
   triggeredAt: string;
   isRead: boolean;
   originalReminder: StockReminder;
+}
+
+
+export interface WatchlistItem {
+  symbol: string;
+  name: string;
+  price?: number;
+  change?: number;
 }

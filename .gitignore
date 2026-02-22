@@ -1,3 +1,6 @@
+Backend/stock_data.db
+StockGraph/*
+
 .env
 venv/
 __pycache__/

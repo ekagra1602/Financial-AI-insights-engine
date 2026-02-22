@@ -1,39 +1,16 @@
-
 import os
-import json
 import re
+import json
 import requests
 from fastapi import HTTPException
-from typing import Optional
 
 # Cirrascale AI Suite OpenAI-compatible endpoint
 AI100_BASE_URL = os.getenv("AI100_BASE_URL", "https://aisuite.cirrascale.com/apis/v2")
 AI100_API_KEY = os.getenv("AI100_API_KEY")
 
 # Default model to use (can be configured)
-AI100_MODEL = os.getenv("AI100_MODEL", "DeepSeek-R1-Distill-Llama-70B")
+AI100_MODEL = os.getenv("AI100_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
 
-
-def is_api_configured() -> bool:
-    """Check whether the AI100 API key is available."""
-    return bool(AI100_API_KEY)
-
-
-def chat_completion(
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float = 0.3,
-    max_tokens: int = 500,
-) -> Optional[dict]:
-    """
-    Generic reusable wrapper around the AI100 chat completions endpoint.
-    Sends the given system + user prompts, parses the JSON response, and
-    returns the result dict.  Returns None on any failure.
-    
-    Every service that needs the LLM should call this instead of
-    duplicating the HTTP / parsing logic.
-    """
-    if not AI100_API_KEY:
 # Maximum retries for JSON parsing failures
 MAX_RETRIES = 2
 
@@ -111,7 +88,7 @@ def _parse_structured_response(raw: str) -> dict:
 def _try_extract_json(raw: str) -> dict:
     """
     Fallback: try to extract JSON from the response if the model happens to return it.
-    Handles: bare JSON, markdown fences, leading/trailing text, truncated JSON.
+    Handles: bare JSON, markdown fences, leading/trailing text.
     Raises ValueError if no valid JSON found.
     """
     # Strip markdown code fences if present
@@ -132,36 +109,20 @@ def _try_extract_json(raw: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # Try to fix truncated JSON (missing closing braces)
-    start = cleaned.find('{')
-    if start != -1:
-        json_str = cleaned[start:].rstrip()
-        open_braces = json_str.count('{') - json_str.count('}')
-        open_brackets = json_str.count('[') - json_str.count(']')
-        if open_braces > 0 or open_brackets > 0:
-            json_str += ']' * open_brackets + '}' * open_braces
-            try:
-                result = json.loads(json_str)
-                print(f"   ✅ Recovered truncated JSON (closed {open_brackets} brackets, {open_braces} braces)")
-                return result
-            except json.JSONDecodeError:
-                pass
-
     raise ValueError(f"Could not extract JSON from response: {raw[:200]}...")
 
 
 # ─── Main Function ───────────────────────────────────────────────────────────
 
-def analyze_text(text: str):
+def analyze_text(text: str) -> dict:
     """
     Sends text to Qualcomm AI100 (via Cirrascale) for summarization and analysis.
     Returns dict with keys: summary, sentiment, tone, keywords.
-    Returns None if all attempts fail (caller should skip the article).
-    Retries up to MAX_RETRIES times if parsing fails.
+    Retries up to MAX_RETRIES times if JSON parsing fails.
     """
     if not AI100_API_KEY:
-        print("⚠️  AI100_API_KEY not set — skipping article.")
-        return None
+        print("⚠️  AI100_API_KEY not set — returning mock response.")
+        return _mock_response(text)
 
     url = f"{AI100_BASE_URL}/chat/completions"
     headers = {
@@ -186,6 +147,7 @@ def analyze_text(text: str):
     print("─" * 60)
     print("📤 AI100 REQUEST")
     print(f"   Model:  {AI100_MODEL}")
+    print(f"   System: {SYSTEM_PROMPT[:100]}...")
     print(f"   Article length: {len(text)} chars (truncated to {min(len(text), 3500)})")
     print("─" * 60)
 
@@ -270,11 +232,12 @@ def analyze_text(text: str):
             print(f"   ❌ Network error on attempt {attempt}: {e}")
             continue
 
-    # All retries exhausted — return None so the article is skipped
+    # All retries exhausted
     print(f"   ❌ All {MAX_RETRIES} attempts failed. Last error: {last_error}")
-    print(f"   Skipping this article.")
+    print(f"   Falling back to mock response.")
     print("─" * 60)
-    return None
+    return _mock_response(text)
+
 
 def _validate_and_sanitize(result: dict, original_text: str) -> dict:
     """
@@ -304,3 +267,19 @@ def _validate_and_sanitize(result: dict, original_text: str) -> dict:
         result["keywords"] = []
 
     return result
+
+
+def _mock_response(text: str) -> dict:
+    """
+    Fallback mock response when the API is unavailable or all retries fail.
+    """
+    summary = text[:300].strip()
+    if len(text) > 300:
+        summary += "..."
+
+    return {
+        "summary": summary,
+        "sentiment": "neutral",
+        "tone": "neutral",
+        "keywords": [],
+    }
