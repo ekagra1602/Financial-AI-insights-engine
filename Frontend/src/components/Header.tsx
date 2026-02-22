@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Bell, MessageSquare, TrendingUp, Home, Newspaper } from 'lucide-react';
+import { Search, Bell, MessageSquare, TrendingUp, Home, Newspaper, BellRing } from 'lucide-react';
 
 interface HeaderProps {
   onSearch?: (ticker: string) => void;
@@ -71,6 +71,14 @@ const Header: React.FC<HeaderProps> = () => {
               <span>Chatbot</span>
             </Link>
 
+            <Link
+              to="/reminders"
+              className={`flex items-center gap-2 ${location.pathname === '/reminders' ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}
+            >
+              <BellRing className="w-5 h-5" />
+              <span>Reminders</span>
+            </Link>
+            
             <button className="relative text-text-primary hover:text-primary transition-colors">
               <Bell className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-negative rounded-full text-xs flex items-center justify-center text-white">

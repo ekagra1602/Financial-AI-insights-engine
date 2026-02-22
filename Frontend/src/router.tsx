@@ -6,6 +6,7 @@ import { ChatbotPage } from './pages/ChatbotPage';
 import { RootLayout } from './layouts/RootLayout';
 import WebSearch from './components/WebSearch';
 import SentimentPage from './pages/SentimentPage';
+import RemindersPage from './pages/RemindersPage';
 
 // Create the router with routes
 const router = createBrowserRouter([
@@ -36,6 +37,10 @@ const router = createBrowserRouter([
       {
         path: '/sentiment-reports',
         element: <SentimentPage />
+      },
+      {
+        path: '/reminders',
+        element: <RemindersPage />
       }
     ]
   }

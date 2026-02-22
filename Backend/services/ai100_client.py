@@ -1,17 +1,39 @@
 
 import os
-import re
 import json
+import re
 import requests
 from fastapi import HTTPException
+from typing import Optional
 
 # Cirrascale AI Suite OpenAI-compatible endpoint
 AI100_BASE_URL = os.getenv("AI100_BASE_URL", "https://aisuite.cirrascale.com/apis/v2")
 AI100_API_KEY = os.getenv("AI100_API_KEY")
 
 # Default model to use (can be configured)
-AI100_MODEL = os.getenv("AI100_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+AI100_MODEL = os.getenv("AI100_MODEL", "DeepSeek-R1-Distill-Llama-70B")
 
+
+def is_api_configured() -> bool:
+    """Check whether the AI100 API key is available."""
+    return bool(AI100_API_KEY)
+
+
+def chat_completion(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float = 0.3,
+    max_tokens: int = 500,
+) -> Optional[dict]:
+    """
+    Generic reusable wrapper around the AI100 chat completions endpoint.
+    Sends the given system + user prompts, parses the JSON response, and
+    returns the result dict.  Returns None on any failure.
+    
+    Every service that needs the LLM should call this instead of
+    duplicating the HTTP / parsing logic.
+    """
+    if not AI100_API_KEY:
 # Maximum retries for JSON parsing failures
 MAX_RETRIES = 2
 
@@ -253,7 +275,6 @@ def analyze_text(text: str):
     print(f"   Skipping this article.")
     print("─" * 60)
     return None
-
 
 def _validate_and_sanitize(result: dict, original_text: str) -> dict:
     """

@@ -20,10 +20,12 @@ app.add_middleware(
 )
 
 from routers.news import router as news_router
+from routers.reminders import router as reminders_router
 
 # Include routers
 app.include_router(finnhub_router, prefix="/api/v1")
 app.include_router(news_router, prefix="/api/v1")
+app.include_router(reminders_router, prefix="/api/v1")
 from routers.stock_data import router as stock_router
 app.include_router(stock_router, prefix="/api/v1")
 from routers.watchlist import router as watchlist_router

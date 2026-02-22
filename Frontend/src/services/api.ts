@@ -79,6 +79,36 @@ export const fetchMarketNews = async (forceRefresh = false) => {
   }
 };
 
+// Reminder parsing via AI100 LLM
+export interface ParsedReminderResponse {
+  ticker: string | null;
+  company_name: string | null;
+  action: string | null;
+  condition_type: 'price_above' | 'price_below' | 'percent_change' | 'time_based' | 'custom';
+  target_price: number | null;
+  percent_change: number | null;
+  trigger_time: string | null;
+  current_price: number | null;
+  notes: string | null;
+  source: string;
+}
+
+export const parseReminderText = async (text: string): Promise<ParsedReminderResponse> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/reminders/parse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to parse reminder');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error parsing reminder:', error);
+    throw error;
+  }
+};
 export const fetchSimilarNews = async (urlHash: string) => {
   try {
     const response = await fetch(`${API_BASE_URL}/news/similar/${urlHash}`);
