@@ -8,13 +8,14 @@ import { twMerge } from 'tailwind-merge';
 
 interface StockChartProps {
     symbol: string;
+    companyName?: string;
     isInWatchlist?: boolean;
     onToggleWatchlist?: () => void;
 }
 
 const timeframes = ['1D', '5D', '1M', '3M', '1Y', '5Y'];
 
-export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, onToggleWatchlist }) => {
+export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isInWatchlist, onToggleWatchlist }) => {
     const [data, setData] = useState<StockDataPoint[]>([]);
     const [timeframe, setTimeframe] = useState('1D');
     const [loading, setLoading] = useState(false);
@@ -50,10 +51,14 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
         };
     }, [symbol, timeframe]);
 
-    // Determine color
+    // Determine color + compute change from period open → latest close
     const isPositive = data.length > 0 && (data[data.length - 1].close >= data[0].open);
-    // Robinhood green/red hex codes
     const lineColor = isPositive ? '#00c805' : '#ff5000';
+
+    const priceChange = data.length > 0 ? data[data.length - 1].close - data[0].open : 0;
+    const percentChange = data.length > 0 && data[0].open !== 0
+        ? (priceChange / data[0].open) * 100
+        : 0;
 
     const xData = data.map(d => d.time);
     const yData = data.map(d => d.close);
@@ -74,7 +79,16 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <div className="flex items-center gap-3">
-                        <h2 className="text-3xl font-bold text-text-primary tracking-widest">{symbol}</h2>
+                        <div>
+                            {companyName ? (
+                                <>
+                                    <h2 className="text-xl font-bold text-text-primary leading-tight">{companyName}</h2>
+                                    <span className="text-xs font-semibold text-text-secondary tracking-widest uppercase">{symbol}</span>
+                                </>
+                            ) : (
+                                <h2 className="text-3xl font-bold text-text-primary tracking-widest">{symbol}</h2>
+                            )}
+                        </div>
                         {onToggleWatchlist && (
                             <button
                                 onClick={onToggleWatchlist}
@@ -91,6 +105,13 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                     <div className={clsx("text-xl font-medium", isPositive ? "text-positive" : "text-negative")}>
                         ${data.length > 0 ? data[data.length - 1].close.toFixed(2) : '0.00'}
                     </div>
+                    {data.length > 0 && (
+                        <div className={clsx("text-sm font-medium mt-0.5", isPositive ? "text-positive" : "text-negative")}>
+                            {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}&nbsp;
+                            ({percentChange >= 0 ? '+' : ''}{percentChange.toFixed(2)}%)&nbsp;
+                            <span className="text-text-secondary font-normal">{timeframe}</span>
+                        </div>
+                    )}
                 </div>
                 <div className="flex space-x-1">
                     {timeframes.map((tf) => (

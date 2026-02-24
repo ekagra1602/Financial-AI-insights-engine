@@ -6,6 +6,8 @@ from services.finnhub_client import get_finnhub_quote
 router = APIRouter()
 
 
+# ── Pydantic models ───────────────────────────────────────────────────────────
+
 class ReminderRequest(BaseModel):
     text: str
 
@@ -23,6 +25,44 @@ class ParsedReminder(BaseModel):
     source: str = "llm"
 
 
+class SaveReminderRequest(BaseModel):
+    original_text: str
+    ticker: str
+    company_name: str | None = None
+    action: str = "Review and take action"
+    condition_type: str = "custom"
+    target_price: float | None = None
+    percent_change: float | None = None
+    trigger_time: str | None = None
+    custom_condition: str | None = None
+    current_price: float | None = None
+    notes: str | None = None
+
+
+class SavedReminder(BaseModel):
+    id: str
+    original_text: str
+    ticker: str
+    company_name: str | None = None
+    action: str
+    status: str
+    condition_type: str
+    target_price: float | None = None
+    percent_change: float | None = None
+    trigger_time: str | None = None
+    custom_condition: str | None = None
+    created_at: str
+    triggered_at: str | None = None
+    current_price: float | None = None
+    notes: str | None = None
+
+
+class ReminderStatusUpdate(BaseModel):
+    status: str
+
+
+# ── Parse endpoint (existing) ─────────────────────────────────────────────────
+
 @router.post("/reminders/parse", response_model=ParsedReminder)
 async def parse_reminder_text(request: ReminderRequest):
     """
@@ -34,18 +74,16 @@ async def parse_reminder_text(request: ReminderRequest):
         raise HTTPException(status_code=400, detail="Reminder text cannot be empty")
 
     try:
-        # Step 1: Use LLM to parse natural language into structured data
         parsed = parse_reminder(request.text)
 
         ticker = parsed.get("ticker")
         current_price = None
         source = "llm" if parsed.get("_source") != "fallback_regex" else "regex_fallback"
 
-        # Step 2: Fetch real-time price from Finnhub if we got a ticker
         if ticker:
             try:
                 quote = get_finnhub_quote(ticker)
-                current_price = quote.get("c")  # "c" = current price in Finnhub
+                current_price = quote.get("c")
             except Exception as e:
                 print(f"Could not fetch price for {ticker}: {e}")
 
@@ -64,3 +102,52 @@ async def parse_reminder_text(request: ReminderRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse reminder: {str(e)}")
+
+
+# ── CRUD endpoints ────────────────────────────────────────────────────────────
+
+@router.post("/reminders", response_model=SavedReminder, status_code=201)
+async def save_reminder(request: SaveReminderRequest):
+    """Persist a parsed reminder to the database."""
+    from database import create_reminder
+    row = create_reminder(request.model_dump())
+    return SavedReminder(**row)
+
+
+@router.get("/reminders", response_model=list[SavedReminder])
+async def list_reminders():
+    """Return all reminders, newest first."""
+    from database import get_all_reminders
+    return [SavedReminder(**r) for r in get_all_reminders()]
+
+
+@router.get("/reminders/{reminder_id}", response_model=SavedReminder)
+async def get_reminder(reminder_id: str):
+    """Fetch a single reminder by ID."""
+    from database import get_reminder_by_id
+    row = get_reminder_by_id(reminder_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return SavedReminder(**row)
+
+
+@router.patch("/reminders/{reminder_id}/status", response_model=SavedReminder)
+async def update_status(reminder_id: str, body: ReminderStatusUpdate):
+    """Update a reminder's status (cancel, trigger, expire)."""
+    from database import update_reminder_status
+    VALID_STATUSES = {"active", "triggered", "expired", "cancelled"}
+    if body.status not in VALID_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {body.status}")
+    row = update_reminder_status(reminder_id, body.status)
+    if not row:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return SavedReminder(**row)
+
+
+@router.delete("/reminders/{reminder_id}", status_code=204)
+async def remove_reminder(reminder_id: str):
+    """Hard-delete a reminder."""
+    from database import delete_reminder
+    deleted = delete_reminder(reminder_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Reminder not found")
