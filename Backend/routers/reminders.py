@@ -61,6 +61,15 @@ class ReminderStatusUpdate(BaseModel):
     status: str
 
 
+class AlertResponse(BaseModel):
+    id: str
+    reminder_id: str
+    ticker: str
+    message: str
+    triggered_at: str
+    is_read: bool
+
+
 # ── Parse endpoint (existing) ─────────────────────────────────────────────────
 
 @router.post("/reminders/parse", response_model=ParsedReminder)
@@ -151,3 +160,32 @@ async def remove_reminder(reminder_id: str):
     deleted = delete_reminder(reminder_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Reminder not found")
+
+
+# ── Alert endpoints ───────────────────────────────────────────────────────────
+
+@router.get("/alerts", response_model=list[AlertResponse])
+async def list_alerts():
+    """Return all alerts, newest first."""
+    from database import get_all_alerts
+    rows = get_all_alerts()
+    return [AlertResponse(**{**r, "is_read": bool(r["is_read"])}) for r in rows]
+
+
+@router.patch("/alerts/{alert_id}/read", response_model=AlertResponse)
+async def read_alert(alert_id: str):
+    """Mark an alert as read."""
+    from database import mark_alert_read
+    row = mark_alert_read(alert_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return AlertResponse(**{**row, "is_read": bool(row["is_read"])})
+
+
+@router.delete("/alerts/{alert_id}", status_code=204)
+async def delete_alert(alert_id: str):
+    """Dismiss (hard-delete) an alert."""
+    from database import dismiss_alert
+    deleted = dismiss_alert(alert_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Alert not found")

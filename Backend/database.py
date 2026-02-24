@@ -60,6 +60,18 @@ def init_db():
         }, pk="symbol")
         print("Created watchlist table")
 
+    # Table for Alerts (triggered reminder notifications)
+    if "alerts" not in db.table_names():
+        db["alerts"].create({
+            "id":           str,
+            "reminder_id":  str,
+            "ticker":       str,
+            "message":      str,
+            "triggered_at": str,
+            "is_read":      int,   # 0 = unread, 1 = read
+        }, pk="id")
+        print("Created alerts table")
+
     # Table for Reminders
     if "reminders" not in db.table_names():
         db["reminders"].create({
@@ -144,6 +156,41 @@ def delete_reminder(reminder_id: str) -> bool:
     db = get_db()
     try:
         db["reminders"].delete(reminder_id)
+        return True
+    except Exception:
+        return False
+
+# ── Alert CRUD ────────────────────────────────────────────────────────────────
+
+def create_alert(data: dict) -> dict:
+    db = get_db()
+    row = {
+        "id":           str(uuid.uuid4()),
+        "reminder_id":  data["reminder_id"],
+        "ticker":       data["ticker"],
+        "message":      data["message"],
+        "triggered_at": datetime.now().isoformat(),
+        "is_read":      0,
+    }
+    db["alerts"].insert(row, pk="id")
+    return row
+
+def get_all_alerts() -> list:
+    db = get_db()
+    return list(db["alerts"].rows_where(order_by="triggered_at desc"))
+
+def mark_alert_read(alert_id: str) -> dict | None:
+    db = get_db()
+    try:
+        db["alerts"].update(alert_id, {"is_read": 1})
+        return db["alerts"].get(alert_id)
+    except Exception:
+        return None
+
+def dismiss_alert(alert_id: str) -> bool:
+    db = get_db()
+    try:
+        db["alerts"].delete(alert_id)
         return True
     except Exception:
         return False

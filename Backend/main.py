@@ -13,6 +13,13 @@ def on_startup():
     except Exception as e:
         print(f"Warning: Database init skipped ({e}). Install deps with: pip install -r requirements.txt")
 
+
+@app.on_event("startup")
+async def start_price_monitor():
+    import asyncio
+    from services.price_monitor import monitor_loop
+    asyncio.create_task(monitor_loop())
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,

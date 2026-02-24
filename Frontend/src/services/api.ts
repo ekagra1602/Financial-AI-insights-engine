@@ -177,6 +177,34 @@ export const deleteReminder = async (id: string): Promise<void> => {
   const response = await fetch(`${API_BASE_URL}/reminders/${id}`, { method: 'DELETE' });
   if (!response.ok) throw new Error('Failed to delete reminder');
 };
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+
+export interface AlertResponse {
+  id: string;
+  reminder_id: string;
+  ticker: string;
+  message: string;
+  triggered_at: string;
+  is_read: boolean;
+}
+
+export const fetchAlerts = async (): Promise<AlertResponse[]> => {
+  const response = await fetch(`${API_BASE_URL}/alerts`);
+  if (!response.ok) throw new Error('Failed to fetch alerts');
+  return response.json();
+};
+
+export const markAlertRead = async (id: string): Promise<AlertResponse> => {
+  const response = await fetch(`${API_BASE_URL}/alerts/${id}/read`, { method: 'PATCH' });
+  if (!response.ok) throw new Error('Failed to mark alert as read');
+  return response.json();
+};
+
+export const dismissAlert = async (id: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/alerts/${id}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to dismiss alert');
+};
 export const fetchSimilarNews = async (urlHash: string) => {
   try {
     const response = await fetch(`${API_BASE_URL}/news/similar/${urlHash}`);

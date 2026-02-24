@@ -11,6 +11,10 @@ import {
   deleteReminder as apiDeleteReminder,
   SavedReminderResponse,
   SaveReminderPayload,
+  fetchAlerts,
+  markAlertRead,
+  dismissAlert as apiDismissAlert,
+  AlertResponse,
 } from '../services/api';
 
 // ── Company name lookup (fallback when backend doesn't return one) ────────────
@@ -103,6 +107,32 @@ function savedReminderToStockReminder(r: SavedReminderResponse): StockReminder {
   };
 }
 
+// ── Alert mapper ──────────────────────────────────────────────────────────────
+function alertResponseToReminderAlert(
+  a: AlertResponse,
+  reminders: StockReminder[]
+): ReminderAlert {
+  const found = reminders.find(r => r.id === a.reminder_id);
+  const originalReminder: StockReminder = found ?? {
+    id: a.reminder_id,
+    originalText: '',
+    ticker: a.ticker,
+    action: '',
+    condition: { type: 'custom' },
+    status: 'triggered',
+    createdAt: a.triggered_at,
+  };
+  return {
+    id:               a.id,
+    reminderId:       a.reminder_id,
+    ticker:           a.ticker,
+    message:          a.message,
+    triggeredAt:      a.triggered_at,
+    isRead:           a.is_read,
+    originalReminder,
+  };
+}
+
 // ── Page Component ────────────────────────────────────────────────────────────
 export const RemindersPage: React.FC = () => {
   const [reminders, setReminders] = useState<StockReminder[]>([]);
@@ -111,21 +141,47 @@ export const RemindersPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
 
-  // Load persisted reminders on mount
+  // Load reminders + alerts on mount, then poll alerts every 60s
   useEffect(() => {
-    async function load() {
+    async function loadAll() {
       setIsLoading(true);
       try {
-        const rows = await fetchReminders();
-        setReminders(rows.map(savedReminderToStockReminder));
+        const [reminderRows, alertRows] = await Promise.all([
+          fetchReminders(),
+          fetchAlerts(),
+        ]);
+        const mappedReminders = reminderRows.map(savedReminderToStockReminder);
+        setReminders(mappedReminders);
+        setAlerts(alertRows.map(a => alertResponseToReminderAlert(a, mappedReminders)));
       } catch (err) {
-        console.error('Failed to load reminders:', err);
+        console.error('Failed to load data:', err);
         setShowToast('Could not load reminders from server.');
       } finally {
         setIsLoading(false);
       }
     }
-    load();
+    loadAll();
+
+    // Poll for new alerts every 60 seconds
+    const pollId = setInterval(async () => {
+      try {
+        const alertRows = await fetchAlerts();
+        setAlerts(prev => {
+          // Use functional update so we always have latest reminders in scope
+          return alertRows.map(a => {
+            const existing = prev.find(p => p.id === a.id);
+            return existing ?? alertResponseToReminderAlert(a, []);
+          });
+        });
+        // Also refresh reminder statuses (some may have been triggered)
+        const reminderRows = await fetchReminders();
+        setReminders(reminderRows.map(savedReminderToStockReminder));
+      } catch (err) {
+        console.error('Poll error:', err);
+      }
+    }, 60_000);
+
+    return () => clearInterval(pollId);
   }, []);
 
   // Auto-hide toast
@@ -208,11 +264,21 @@ export const RemindersPage: React.FC = () => {
     }
   };
 
-  const handleMarkAlertAsRead = (id: string) => {
+  const handleMarkAlertAsRead = async (id: string) => {
+    try {
+      await markAlertRead(id);
+    } catch (err) {
+      console.error('Failed to mark alert as read:', err);
+    }
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
   };
 
-  const handleDismissAlert = (id: string) => {
+  const handleDismissAlert = async (id: string) => {
+    try {
+      await apiDismissAlert(id);
+    } catch (err) {
+      console.error('Failed to dismiss alert:', err);
+    }
     setAlerts(prev => prev.filter(a => a.id !== id));
   };
 
