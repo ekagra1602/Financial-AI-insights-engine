@@ -223,3 +223,44 @@ export const triggerNewsBriefingGeneration = async (): Promise<void> => {
     console.error('Error triggering news briefing generation:', err);
   }
 };
+
+// ===== Account Settings =====
+
+const ACCOUNT_BASE = "http://localhost:8000/api/v1/account";
+
+export interface AccountSettings {
+  email: string;
+  email_confirmed: boolean;
+  email_notifications_enabled: boolean;
+}
+
+export const getAccountSettings = async (): Promise<AccountSettings> => {
+  const res = await fetch(`${ACCOUNT_BASE}/settings`);
+  return res.json();
+};
+
+export const saveEmail = async (email: string): Promise<{ message: string }> => {
+  const res = await fetch(`${ACCOUNT_BASE}/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  return res.json();
+};
+
+export const confirmEmail = async (code: string): Promise<{ confirmed: boolean; message: string }> => {
+  const res = await fetch(`${ACCOUNT_BASE}/confirm-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  return res.json();
+};
+
+export const toggleEmailNotifications = async (enabled: boolean): Promise<void> => {
+  await fetch(`${ACCOUNT_BASE}/email-notifications`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+};

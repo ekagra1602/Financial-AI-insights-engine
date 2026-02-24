@@ -114,6 +114,27 @@ def init_db():
         }, pk="id")
         print("Created news_briefing_articles table")
 
+    # Table for user settings (single-row, no auth)
+    if "user_settings" not in db.table_names():
+        db["user_settings"].create({
+            "id": int,
+            "email": str,
+            "email_confirmed": int,   # 0 or 1
+            "email_notifications_enabled": int,  # 0 or 1
+            "confirmation_code": str,
+            "updated_at": str,
+        }, pk="id")
+        # Insert default row
+        db["user_settings"].insert({
+            "id": 1,
+            "email": "",
+            "email_confirmed": 0,
+            "email_notifications_enabled": 0,
+            "confirmation_code": "",
+            "updated_at": datetime.now().isoformat(),
+        })
+        print("Created user_settings table")
+
 def add_to_watchlist(symbol: str, name: str):
     db = get_db()
     db["watchlist"].upsert({
@@ -315,6 +336,60 @@ def fetch_history(symbol: str, table: str, start_str: str = None):
         
     rows = list(db[table].rows_where(query, args, order_by=sort_col))
     return pd.DataFrame(rows)
+
+# ===== User Settings =====
+
+def get_user_settings() -> dict:
+    """Get user settings (single-row table)."""
+    db = get_db()
+    if "user_settings" not in db.table_names():
+        return {"email": "", "email_confirmed": False, "email_notifications_enabled": False}
+    try:
+        row = db["user_settings"].get(1)
+        return {
+            "email": row.get("email", ""),
+            "email_confirmed": bool(row.get("email_confirmed", 0)),
+            "email_notifications_enabled": bool(row.get("email_notifications_enabled", 0)),
+        }
+    except Exception:
+        return {"email": "", "email_confirmed": False, "email_notifications_enabled": False}
+
+def save_user_email(email: str, confirmation_code: str):
+    """Save email and set a new confirmation code. Marks email as unconfirmed."""
+    db = get_db()
+    db["user_settings"].update(1, {
+        "email": email,
+        "email_confirmed": 0,
+        "email_notifications_enabled": 0,
+        "confirmation_code": confirmation_code,
+        "updated_at": datetime.now().isoformat(),
+    })
+
+def verify_confirmation_code(code: str) -> bool:
+    """Check if the provided code matches the stored confirmation code."""
+    db = get_db()
+    try:
+        row = db["user_settings"].get(1)
+        return row.get("confirmation_code", "") == code
+    except Exception:
+        return False
+
+def set_email_confirmed():
+    """Mark email as confirmed."""
+    db = get_db()
+    db["user_settings"].update(1, {
+        "email_confirmed": 1,
+        "confirmation_code": "",
+        "updated_at": datetime.now().isoformat(),
+    })
+
+def toggle_email_notifications(enabled: bool):
+    """Enable or disable email notifications."""
+    db = get_db()
+    db["user_settings"].update(1, {
+        "email_notifications_enabled": 1 if enabled else 0,
+        "updated_at": datetime.now().isoformat(),
+    })
 
 if __name__ == "__main__":
     init_db()

@@ -40,6 +40,15 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         return () => clearInterval(interval);
     }, []);
 
+    // On app startup, trigger news briefing generation for any enabled stocks
+    // that haven't received today's briefing yet (e.g. user opens app in the evening)
+    useEffect(() => {
+        triggerNewsBriefingGeneration().then(() => {
+            // Reload notifications after generation completes to pick up new briefings
+            setTimeout(loadNotifications, 5_000);
+        });
+    }, []);
+
     // 10 AM ET daily timer for news briefing generation
     useEffect(() => {
         const check10AM = () => {

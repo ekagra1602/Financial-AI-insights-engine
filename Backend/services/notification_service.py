@@ -22,6 +22,11 @@ from services.stock_manager import manager as data_manager
 import pytz
 import json
 
+try:
+    from services.email_service import send_notification_email
+except Exception:
+    send_notification_email = None
+
 ET = pytz.timezone("America/New_York")
 
 DAILY_EOD_THRESHOLD = 0.0      # percent (Trigger on any move)
@@ -198,6 +203,11 @@ def _check_daily_eod(db, watchlist) -> list[dict]:
                 pct, open_price, close_price, earliest["datetime"], latest["datetime"]
             )
             save_generated_notification(n)
+            try:
+                if send_notification_email:
+                    send_notification_email(n)
+            except Exception as e:
+                print(f"  [Email] Error sending notification email: {e}")
             new_notifications.append(n)
 
     return new_notifications
@@ -244,6 +254,11 @@ def _check_2h_momentum(db, watchlist) -> list[dict]:
                 pct, open_price, close_price, earliest["datetime"], latest["datetime"]
             )
             save_generated_notification(n)
+            try:
+                if send_notification_email:
+                    send_notification_email(n)
+            except Exception as e:
+                print(f"  [Email] Error sending notification email: {e}")
             new_notifications.append(n)
 
     return new_notifications
@@ -324,6 +339,11 @@ def _check_morning_gap(db, watchlist) -> list[dict]:
                 pct, prev_close, today_open, yesterday_close_row["datetime"], today_open_row["datetime"]
             )
             save_generated_notification(n)
+            try:
+                if send_notification_email:
+                    send_notification_email(n)
+            except Exception as e:
+                print(f"  [Email] Error sending notification email: {e}")
             new_notifications.append(n)
 
     return new_notifications

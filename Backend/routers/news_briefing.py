@@ -22,6 +22,11 @@ import pytz
 import json
 import hashlib
 
+try:
+    from services.email_service import send_notification_email
+except Exception:
+    send_notification_email = None
+
 router = APIRouter(prefix="/news-briefing", tags=["News Briefing"])
 
 ET = pytz.timezone("America/New_York")
@@ -123,6 +128,11 @@ def _generate_briefing_for_symbol(symbol: str) -> dict | None:
         "articles": articles_json,
     }
     save_generated_notification(n)
+    try:
+        if send_notification_email:
+            send_notification_email(n)
+    except Exception as e:
+        print(f"  [News Briefing] Error sending email: {e}")
     return n
 
 
