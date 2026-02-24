@@ -13,6 +13,18 @@ def on_startup():
     except Exception as e:
         print(f"Warning: Database init skipped ({e}). Install deps with: pip install -r requirements.txt")
 
+
+@app.on_event("startup")
+async def start_price_monitor():
+    # Set to True to enable background price monitoring (uses Finnhub API credits)
+    ENABLE_PRICE_MONITOR = False
+    if not ENABLE_PRICE_MONITOR:
+        print("[Monitor] Price monitor disabled. Set ENABLE_PRICE_MONITOR=True in main.py to activate.")
+        return
+    import asyncio
+    from services.price_monitor import monitor_loop
+    asyncio.create_task(monitor_loop())
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,

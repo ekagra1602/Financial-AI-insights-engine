@@ -109,6 +109,102 @@ export const parseReminderText = async (text: string): Promise<ParsedReminderRes
     throw error;
   }
 };
+
+// ── Reminder persistence ──────────────────────────────────────────────────────
+
+export interface SavedReminderResponse {
+  id: string;
+  original_text: string;
+  ticker: string;
+  company_name: string | null;
+  action: string;
+  status: 'active' | 'triggered' | 'expired' | 'cancelled';
+  condition_type: 'price_above' | 'price_below' | 'percent_change' | 'time_based' | 'custom';
+  target_price: number | null;
+  percent_change: number | null;
+  trigger_time: string | null;
+  custom_condition: string | null;
+  created_at: string;
+  triggered_at: string | null;
+  current_price: number | null;
+  notes: string | null;
+}
+
+export interface SaveReminderPayload {
+  original_text: string;
+  ticker: string;
+  company_name?: string | null;
+  action: string;
+  condition_type: string;
+  target_price?: number | null;
+  percent_change?: number | null;
+  trigger_time?: string | null;
+  custom_condition?: string | null;
+  current_price?: number | null;
+  notes?: string | null;
+}
+
+export const saveReminder = async (payload: SaveReminderPayload): Promise<SavedReminderResponse> => {
+  const response = await fetch(`${API_BASE_URL}/reminders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error('Failed to save reminder');
+  return response.json();
+};
+
+export const fetchReminders = async (): Promise<SavedReminderResponse[]> => {
+  const response = await fetch(`${API_BASE_URL}/reminders`);
+  if (!response.ok) throw new Error('Failed to fetch reminders');
+  return response.json();
+};
+
+export const updateReminderStatus = async (
+  id: string,
+  status: 'active' | 'triggered' | 'expired' | 'cancelled'
+): Promise<SavedReminderResponse> => {
+  const response = await fetch(`${API_BASE_URL}/reminders/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) throw new Error('Failed to update reminder status');
+  return response.json();
+};
+
+export const deleteReminder = async (id: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/reminders/${id}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to delete reminder');
+};
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+
+export interface AlertResponse {
+  id: string;
+  reminder_id: string;
+  ticker: string;
+  message: string;
+  triggered_at: string;
+  is_read: boolean;
+}
+
+export const fetchAlerts = async (): Promise<AlertResponse[]> => {
+  const response = await fetch(`${API_BASE_URL}/alerts`);
+  if (!response.ok) throw new Error('Failed to fetch alerts');
+  return response.json();
+};
+
+export const markAlertRead = async (id: string): Promise<AlertResponse> => {
+  const response = await fetch(`${API_BASE_URL}/alerts/${id}/read`, { method: 'PATCH' });
+  if (!response.ok) throw new Error('Failed to mark alert as read');
+  return response.json();
+};
+
+export const dismissAlert = async (id: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/alerts/${id}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to dismiss alert');
+};
 export const fetchSimilarNews = async (urlHash: string) => {
   try {
     const response = await fetch(`${API_BASE_URL}/news/similar/${urlHash}`);

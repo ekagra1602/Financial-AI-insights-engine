@@ -2,6 +2,7 @@ import sqlite_utils
 from datetime import datetime
 import pandas as pd
 import os
+import uuid
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "stock_data.db")
 
@@ -59,6 +60,39 @@ def init_db():
         }, pk="symbol")
         print("Created watchlist table")
 
+    # Table for Alerts (triggered reminder notifications)
+    if "alerts" not in db.table_names():
+        db["alerts"].create({
+            "id":           str,
+            "reminder_id":  str,
+            "ticker":       str,
+            "message":      str,
+            "triggered_at": str,
+            "is_read":      int,   # 0 = unread, 1 = read
+        }, pk="id")
+        print("Created alerts table")
+
+    # Table for Reminders
+    if "reminders" not in db.table_names():
+        db["reminders"].create({
+            "id":               str,
+            "original_text":    str,
+            "ticker":           str,
+            "company_name":     str,
+            "action":           str,
+            "status":           str,   # active | triggered | expired | cancelled
+            "condition_type":   str,   # price_above | price_below | percent_change | time_based | custom
+            "target_price":     float,
+            "percent_change":   float,
+            "trigger_time":     str,
+            "custom_condition": str,
+            "created_at":       str,
+            "triggered_at":     str,
+            "current_price":    float,
+            "notes":            str,
+        }, pk="id")
+        print("Created reminders table")
+
 def add_to_watchlist(symbol: str, name: str):
     db = get_db()
     db["watchlist"].upsert({
@@ -74,6 +108,92 @@ def remove_from_watchlist(symbol: str):
 def get_watchlist():
     db = get_db()
     return list(db["watchlist"].rows)
+
+# ── Reminder CRUD ─────────────────────────────────────────────────────────────
+
+def create_reminder(data: dict) -> dict:
+    db = get_db()
+    row = {
+        "id":               str(uuid.uuid4()),
+        "original_text":    data.get("original_text", ""),
+        "ticker":           data.get("ticker", ""),
+        "company_name":     data.get("company_name"),
+        "action":           data.get("action", "Review and take action"),
+        "status":           "active",
+        "condition_type":   data.get("condition_type", "custom"),
+        "target_price":     data.get("target_price"),
+        "percent_change":   data.get("percent_change"),
+        "trigger_time":     data.get("trigger_time"),
+        "custom_condition": data.get("custom_condition"),
+        "created_at":       datetime.now().isoformat(),
+        "triggered_at":     None,
+        "current_price":    data.get("current_price"),
+        "notes":            data.get("notes"),
+    }
+    db["reminders"].insert(row, pk="id")
+    return row
+
+def get_all_reminders() -> list:
+    db = get_db()
+    return list(db["reminders"].rows_where(order_by="created_at desc"))
+
+def get_reminder_by_id(reminder_id: str) -> dict | None:
+    db = get_db()
+    try:
+        return db["reminders"].get(reminder_id)
+    except Exception:
+        return None
+
+def update_reminder_status(reminder_id: str, status: str) -> dict | None:
+    db = get_db()
+    updates = {"status": status}
+    if status == "triggered":
+        updates["triggered_at"] = datetime.now().isoformat()
+    db["reminders"].update(reminder_id, updates)
+    return get_reminder_by_id(reminder_id)
+
+def delete_reminder(reminder_id: str) -> bool:
+    db = get_db()
+    try:
+        db["reminders"].delete(reminder_id)
+        return True
+    except Exception:
+        return False
+
+# ── Alert CRUD ────────────────────────────────────────────────────────────────
+
+def create_alert(data: dict) -> dict:
+    db = get_db()
+    row = {
+        "id":           str(uuid.uuid4()),
+        "reminder_id":  data["reminder_id"],
+        "ticker":       data["ticker"],
+        "message":      data["message"],
+        "triggered_at": datetime.now().isoformat(),
+        "is_read":      0,
+    }
+    db["alerts"].insert(row, pk="id")
+    return row
+
+def get_all_alerts() -> list:
+    db = get_db()
+    return list(db["alerts"].rows_where(order_by="triggered_at desc"))
+
+def mark_alert_read(alert_id: str) -> dict | None:
+    db = get_db()
+    try:
+        db["alerts"].update(alert_id, {"is_read": 1})
+        return db["alerts"].get(alert_id)
+    except Exception:
+        return None
+
+def dismiss_alert(alert_id: str) -> bool:
+    db = get_db()
+    try:
+        db["alerts"].delete(alert_id)
+        return True
+    except Exception:
+        return False
 
 def save_bars_1d(symbol: str, df: pd.DataFrame):
     if df.empty:
