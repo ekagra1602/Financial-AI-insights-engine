@@ -2,9 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Clock, Zap, Info } from 'lucide-react';
 import { ReminderInput, ReminderList, AlertsPanel } from '../components/reminders';
 import { StockReminder, ReminderAlert, ReminderCondition } from '../types';
-import { parseReminderText as apiParseReminder, ParsedReminderResponse } from '../services/api';
+import {
+  parseReminderText as apiParseReminder,
+  ParsedReminderResponse,
+  saveReminder,
+  fetchReminders,
+  updateReminderStatus,
+  deleteReminder as apiDeleteReminder,
+  SavedReminderResponse,
+  SaveReminderPayload,
+} from '../services/api';
 
-// ── Company name lookup ──────────────────────────────────────────────
+// ── Company name lookup (fallback when backend doesn't return one) ────────────
 const COMPANY_NAMES: Record<string, string> = {
   AAPL: 'Apple Inc.',
   NVDA: 'NVIDIA Corporation',
@@ -18,7 +27,7 @@ const COMPANY_NAMES: Record<string, string> = {
   INTC: 'Intel Corporation',
 };
 
-// ── Client-side regex parser (fallback when backend is unreachable) ──
+// ── Client-side regex parser (fallback when backend is unreachable) ──────────
 function localParse(text: string): ParsedReminderResponse {
   const tickerMatch = text.match(/\b([A-Z]{1,5})\b/);
   const aboveMatch = text.match(/(?:above|over|reaches?|hits?)\s*\$?(\d+(?:\.\d{2})?)/i);
@@ -60,78 +69,64 @@ function localParse(text: string): ParsedReminderResponse {
   };
 }
 
-// ── Demo data ────────────────────────────────────────────────────────
-const DEMO_REMINDERS: StockReminder[] = [
-  {
-    id: '1',
-    originalText: 'Remind me to buy AAPL if the price drops below $170',
-    ticker: 'AAPL',
-    companyName: 'Apple Inc.',
-    action: 'Buy shares',
-    condition: { type: 'price_below', targetPrice: 170.00 },
-    status: 'active',
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    currentPrice: 178.50,
-  },
-  {
-    id: '2',
-    originalText: 'Alert me when NVDA goes above $500',
-    ticker: 'NVDA',
-    companyName: 'NVIDIA Corporation',
-    action: 'Consider selling partial position',
-    condition: { type: 'price_above', targetPrice: 500.00 },
-    status: 'triggered',
-    createdAt: new Date(Date.now() - 172800000).toISOString(),
-    triggeredAt: new Date(Date.now() - 3600000).toISOString(),
-    currentPrice: 512.30,
-  },
-  {
-    id: '3',
-    originalText: 'Notify me if TSLA drops 5% from current price',
-    ticker: 'TSLA',
-    companyName: 'Tesla, Inc.',
-    action: 'Review position and consider adding',
-    condition: { type: 'percent_change', percentChange: -5.0 },
-    status: 'active',
-    createdAt: new Date(Date.now() - 259200000).toISOString(),
-    currentPrice: 248.75,
-  },
-];
-
-const DEMO_ALERTS: ReminderAlert[] = [
-  {
-    id: 'a1',
-    reminderId: '2',
-    ticker: 'NVDA',
-    message: 'NVDA has risen above $500! Current price: $512.30. You wanted to consider selling partial position.',
-    triggeredAt: new Date(Date.now() - 3600000).toISOString(),
-    isRead: false,
-    originalReminder: DEMO_REMINDERS[1],
-  },
-];
-
-// ── Helpers ──────────────────────────────────────────────────────────
-function buildConditionFromResponse(parsed: ParsedReminderResponse): ReminderCondition {
-  switch (parsed.condition_type) {
+// ── Mapper: flat DB row → nested StockReminder ────────────────────────────────
+function savedReminderToStockReminder(r: SavedReminderResponse): StockReminder {
+  let condition: ReminderCondition;
+  switch (r.condition_type) {
     case 'price_above':
-      return { type: 'price_above', targetPrice: parsed.target_price ?? undefined };
+      condition = { type: 'price_above', targetPrice: r.target_price ?? undefined };
+      break;
     case 'price_below':
-      return { type: 'price_below', targetPrice: parsed.target_price ?? undefined };
+      condition = { type: 'price_below', targetPrice: r.target_price ?? undefined };
+      break;
     case 'percent_change':
-      return { type: 'percent_change', percentChange: parsed.percent_change ?? undefined };
+      condition = { type: 'percent_change', percentChange: r.percent_change ?? undefined };
+      break;
     case 'time_based':
-      return { type: 'time_based', triggerTime: parsed.trigger_time ?? undefined };
+      condition = { type: 'time_based', triggerTime: r.trigger_time ?? undefined };
+      break;
     default:
-      return { type: 'custom', customCondition: parsed.notes ?? undefined };
+      condition = { type: 'custom', customCondition: r.custom_condition ?? undefined };
   }
+  return {
+    id:           r.id,
+    originalText: r.original_text,
+    ticker:       r.ticker,
+    companyName:  r.company_name ?? undefined,
+    action:       r.action,
+    condition,
+    status:       r.status,
+    createdAt:    r.created_at,
+    triggeredAt:  r.triggered_at ?? undefined,
+    currentPrice: r.current_price ?? undefined,
+    notes:        r.notes ?? undefined,
+  };
 }
 
-// ── Page Component ───────────────────────────────────────────────────
+// ── Page Component ────────────────────────────────────────────────────────────
 export const RemindersPage: React.FC = () => {
-  const [reminders, setReminders] = useState<StockReminder[]>(DEMO_REMINDERS);
-  const [alerts, setAlerts] = useState<ReminderAlert[]>(DEMO_ALERTS);
+  const [reminders, setReminders] = useState<StockReminder[]>([]);
+  const [alerts, setAlerts] = useState<ReminderAlert[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
+
+  // Load persisted reminders on mount
+  useEffect(() => {
+    async function load() {
+      setIsLoading(true);
+      try {
+        const rows = await fetchReminders();
+        setReminders(rows.map(savedReminderToStockReminder));
+      } catch (err) {
+        console.error('Failed to load reminders:', err);
+        setShowToast('Could not load reminders from server.');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   // Auto-hide toast
   useEffect(() => {
@@ -145,37 +140,41 @@ export const RemindersPage: React.FC = () => {
     setIsProcessing(true);
 
     let parsed: ParsedReminderResponse;
-
     try {
-      // Try the backend first (AI100 LLM + live Finnhub price)
       parsed = await apiParseReminder(text);
     } catch {
-      // Backend unreachable — fall back to client-side regex parsing
       console.warn('Backend unavailable, using client-side parser.');
       parsed = localParse(text);
     }
 
     if (parsed.ticker) {
-      const newReminder: StockReminder = {
-        id: Date.now().toString(),
-        originalText: text,
-        ticker: parsed.ticker,
-        companyName: parsed.company_name || COMPANY_NAMES[parsed.ticker] || undefined,
-        action: parsed.action || 'Review and take action',
-        condition: buildConditionFromResponse(parsed),
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        currentPrice: parsed.current_price ?? undefined,
-        notes: parsed.notes ?? undefined,
+      const payload: SaveReminderPayload = {
+        original_text:    text,
+        ticker:           parsed.ticker,
+        company_name:     parsed.company_name,
+        action:           parsed.action || 'Review and take action',
+        condition_type:   parsed.condition_type,
+        target_price:     parsed.target_price,
+        percent_change:   parsed.percent_change,
+        trigger_time:     parsed.trigger_time,
+        custom_condition: parsed.condition_type === 'custom' ? (parsed.notes ?? undefined) : undefined,
+        current_price:    parsed.current_price,
+        notes:            parsed.notes,
       };
 
-      setReminders((prev) => [newReminder, ...prev]);
+      try {
+        const saved = await saveReminder(payload);
+        setReminders(prev => [savedReminderToStockReminder(saved), ...prev]);
 
-      const priceStr = parsed.current_price ? ` (live: $${parsed.current_price.toFixed(2)})` : '';
-      const sourceLabel =
-        parsed.source === 'llm' ? 'AI' :
-        parsed.source === 'regex_fallback' ? 'server fallback' : 'local';
-      setShowToast(`Reminder created for ${parsed.ticker}${priceStr} — parsed via ${sourceLabel}`);
+        const priceStr = saved.current_price ? ` (live: $${saved.current_price.toFixed(2)})` : '';
+        const sourceLabel =
+          parsed.source === 'llm' ? 'AI' :
+          parsed.source === 'regex_fallback' ? 'server fallback' : 'local';
+        setShowToast(`Reminder created for ${saved.ticker}${priceStr} — parsed via ${sourceLabel}`);
+      } catch (err) {
+        console.error('Failed to save reminder:', err);
+        setShowToast('Parsed reminder but could not save it. Try again.');
+      }
     } else {
       setShowToast('Could not extract a stock ticker. Try: "Alert me when AAPL drops below $170"');
     }
@@ -183,32 +182,51 @@ export const RemindersPage: React.FC = () => {
     setIsProcessing(false);
   };
 
-  const handleDeleteReminder = (id: string) => {
-    setReminders((prev) => prev.filter((r) => r.id !== id));
-    setAlerts((prev) => prev.filter((a) => a.reminderId !== id));
+  const handleDeleteReminder = async (id: string) => {
+    try {
+      await apiDeleteReminder(id);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      setShowToast('Could not delete reminder. Try again.');
+      return;
+    }
+    setReminders(prev => prev.filter(r => r.id !== id));
+    setAlerts(prev => prev.filter(a => a.reminderId !== id));
     setShowToast('Reminder deleted');
   };
 
-  const handleCancelReminder = (id: string) => {
-    setReminders((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'cancelled' as const } : r))
-    );
-    setShowToast('Reminder cancelled');
+  const handleCancelReminder = async (id: string) => {
+    try {
+      const updated = await updateReminderStatus(id, 'cancelled');
+      setReminders(prev =>
+        prev.map(r => r.id === id ? savedReminderToStockReminder(updated) : r)
+      );
+      setShowToast('Reminder cancelled');
+    } catch (err) {
+      console.error('Cancel failed:', err);
+      setShowToast('Could not cancel reminder. Try again.');
+    }
   };
 
   const handleMarkAlertAsRead = (id: string) => {
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, isRead: true } : a))
-    );
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
   };
 
   const handleDismissAlert = (id: string) => {
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    setAlerts(prev => prev.filter(a => a.id !== id));
   };
 
   const handleViewReminder = (reminderId: string) => {
     console.log('View reminder:', reminderId);
   };
+
+  if (isLoading) {
+    return (
+      <div className="max-w-[1400px] mx-auto px-6 py-8 flex items-center justify-center min-h-64">
+        <p className="text-text-secondary">Loading reminders...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto px-6 py-8">
@@ -241,7 +259,7 @@ export const RemindersPage: React.FC = () => {
           </div>
           <div className="flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2">
             <Clock className="w-4 h-4 text-primary" />
-            <span className="text-sm text-text-secondary">Real-time Price Monitoring</span>
+            <span className="text-sm text-text-secondary">Persistent Storage</span>
           </div>
           <div className="flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2">
             <Bell className="w-4 h-4 text-primary" />
@@ -255,7 +273,7 @@ export const RemindersPage: React.FC = () => {
         <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-sm text-text-primary">
-            <strong>How it works:</strong> Type your reminder in plain English like "Alert me when AAPL drops below $170" 
+            <strong>How it works:</strong> Type your reminder in plain English like "Alert me when AAPL drops below $170"
             and our AI will extract the stock, condition, and action to create a smart reminder.
           </p>
         </div>
@@ -289,19 +307,19 @@ export const RemindersPage: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-text-secondary">Active Reminders</span>
                   <span className="font-semibold text-primary">
-                    {reminders.filter((r) => r.status === 'active').length}
+                    {reminders.filter(r => r.status === 'active').length}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-text-secondary">Triggered Today</span>
+                  <span className="text-text-secondary">Triggered</span>
                   <span className="font-semibold text-positive">
-                    {reminders.filter((r) => r.status === 'triggered').length}
+                    {reminders.filter(r => r.status === 'triggered').length}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-text-secondary">Unread Alerts</span>
                   <span className="font-semibold text-negative">
-                    {alerts.filter((a) => !a.isRead).length}
+                    {alerts.filter(a => !a.isRead).length}
                   </span>
                 </div>
               </div>
