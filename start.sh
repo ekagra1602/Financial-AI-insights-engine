@@ -40,6 +40,8 @@ trap cleanup SIGINT SIGTERM
 echo -e "${GREEN}[1/2] Starting Backend on http://localhost:8000${NC}"
 cd Backend
 source venv/bin/activate
+# Ensure dependencies are installed (idempotent; quick if already satisfied)
+pip install -q -r requirements.txt 2>/dev/null || true
 uvicorn main:app --reload --port 8000 &
 BACKEND_PID=$!
 cd ..
