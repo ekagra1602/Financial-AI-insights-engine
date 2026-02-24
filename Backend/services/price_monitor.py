@@ -67,6 +67,31 @@ def _build_message(reminder: dict, current_price: float) -> str:
     return f"Reminder for {ticker} triggered. Current price: ${current_price:.2f}. Action: {action}"
 
 
+async def check_single_reminder(reminder: dict):
+    """
+    Immediately evaluate one reminder right after it's created.
+    Fires an alert if the condition is already met.
+    """
+    from database import update_reminder_status, create_alert
+    from services.finnhub_client import get_finnhub_quote
+
+    try:
+        quote = get_finnhub_quote(reminder["ticker"])
+        current_price = quote.get("c")
+    except Exception as e:
+        print(f"[Monitor] Could not fetch price for {reminder['ticker']} on creation check: {e}")
+        return
+
+    if current_price and _check_condition(reminder, current_price):
+        update_reminder_status(reminder["id"], "triggered")
+        create_alert({
+            "reminder_id": reminder["id"],
+            "ticker":      reminder["ticker"],
+            "message":     _build_message(reminder, current_price),
+        })
+        print(f"[Monitor] Instant trigger — {reminder['ticker']} condition already met at ${current_price:.2f}")
+
+
 async def run_check():
     """Single pass: check all active reminders and fire alerts where conditions are met."""
     from database import get_all_reminders, update_reminder_status, create_alert

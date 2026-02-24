@@ -117,9 +117,13 @@ async def parse_reminder_text(request: ReminderRequest):
 
 @router.post("/reminders", response_model=SavedReminder, status_code=201)
 async def save_reminder(request: SaveReminderRequest):
-    """Persist a parsed reminder to the database."""
+    """Persist a parsed reminder and immediately check if the condition is already met."""
+    import asyncio
     from database import create_reminder
+    from services.price_monitor import check_single_reminder
     row = create_reminder(request.model_dump())
+    # Fire-and-forget: check condition instantly without blocking the response
+    asyncio.create_task(check_single_reminder(row))
     return SavedReminder(**row)
 
 
