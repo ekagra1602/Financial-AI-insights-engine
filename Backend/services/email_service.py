@@ -52,6 +52,35 @@ def send_confirmation_email(email: str, code: str):
         print(f"  [Email] Failed to send confirmation: {e}")
 
 
+def send_alert_email(alert: dict, reminder: dict):
+    """
+    Send an email when a reminder condition is triggered.
+    Silently skips if email not configured / confirmed / enabled.
+    alert   — row from the alerts table (id, ticker, message, triggered_at)
+    reminder — row from the reminders table (action, condition_type, target_price, etc.)
+    """
+    try:
+        settings = get_user_settings()
+        if not settings["email"] or not settings["email_confirmed"] or not settings["email_notifications_enabled"]:
+            return
+
+        ticker = alert.get("ticker", "")
+        subject = f"🔔 {ticker} Reminder Triggered — {reminder.get('action', 'Check now')}"
+        html = _reminder_alert_template(alert, reminder)
+
+        params: resend.Emails.SendParams = {
+            "from": FROM_ADDRESS,
+            "to": [settings["email"]],
+            "subject": subject,
+            "html": html,
+        }
+
+        result = resend.Emails.send(params)
+        print(f"  [Email] Reminder alert sent to {settings['email']}: {subject} (id={result.get('id', '?')})")
+    except Exception as e:
+        print(f"  [Email] Failed to send reminder alert: {e}")
+
+
 # ===== Subject Line Builders =====
 
 def _build_subject(notification: dict) -> str:
@@ -109,8 +138,73 @@ def _build_email_html(notification: dict) -> str:
 
     if ntype == "NEWS_BRIEFING":
         return _news_briefing_template(notification)
+    elif ntype == "REMINDER_ALERT":
+        return _reminder_alert_template(
+            notification.get("_alert", {}),
+            notification.get("_reminder", {})
+        )
     else:
         return _price_alert_template(notification)
+
+
+def _reminder_alert_template(alert: dict, reminder: dict) -> str:
+    ticker      = alert.get("ticker", "")
+    message     = alert.get("message", "")
+    action      = reminder.get("action", "")
+    ctype       = reminder.get("condition_type", "")
+    target      = reminder.get("target_price")
+    pct         = reminder.get("percent_change")
+    company     = reminder.get("company_name") or ticker
+    triggered   = alert.get("triggered_at", "")[:16].replace("T", " ")
+
+    # Build a human-readable condition label
+    if ctype == "price_above" and target:
+        condition_label = f"Price rose above ${target:.2f}"
+    elif ctype == "price_below" and target:
+        condition_label = f"Price dropped below ${target:.2f}"
+    elif ctype == "percent_change" and pct is not None:
+        direction = "gained" if pct > 0 else "dropped"
+        condition_label = f"Price {direction} {abs(pct):.1f}%"
+    elif ctype == "time_based":
+        condition_label = "Scheduled time reached"
+    else:
+        condition_label = "Custom condition met"
+
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>{COMMON_STYLES}</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="logo">📊 Financial Insights Engine</div>
+      <div style="margin-bottom: 20px;">
+        <span class="badge" style="background: rgba(244,63,94,0.15); color: #f43f5e;">🔔 Reminder Triggered</span>
+      </div>
+      <div class="symbol">{ticker}</div>
+      <div class="subtitle">{company}</div>
+
+      <div style="background:#22253a; border-radius:8px; padding:16px; margin: 16px 0;">
+        <div style="color:#8b8fa3; font-size:12px; margin-bottom:8px;">CONDITION MET</div>
+        <div style="color:#f43f5e; font-size:20px; font-weight:700;">{condition_label}</div>
+      </div>
+
+      <div style="background:#22253a; border-radius:8px; padding:16px; margin-bottom:12px;">
+        <div style="color:#8b8fa3; font-size:12px; margin-bottom:6px;">DETAILS</div>
+        <div style="color:#e2e4eb; font-size:14px; line-height:1.6;">{message}</div>
+      </div>
+
+      {'<div style="background:#22253a; border-radius:8px; padding:16px;"><div style="color:#8b8fa3; font-size:12px; margin-bottom:6px;">YOUR ACTION</div><div style="color:#e2e4eb; font-size:14px; font-weight:600;">' + action + '</div></div>' if action else ''}
+
+      <div style="color:#555870; font-size:12px; margin-top:16px;">Triggered at {triggered}</div>
+    </div>
+    <div class="footer">
+      Financial Insights Engine • You're receiving this because email notifications are enabled.
+    </div>
+  </div>
+</body>
+</html>
+"""
 
 
 def _price_alert_template(notification: dict) -> str:

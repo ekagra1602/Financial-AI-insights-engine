@@ -321,7 +321,7 @@ export interface NewsArticle {
 
 export interface Notification {
   id: string;
-  type: 'DAILY_EOD' | 'MOMENTUM_2H' | 'MORNING_GAP' | 'NEWS_BRIEFING';
+  type: 'DAILY_EOD' | 'MOMENTUM_2H' | 'MORNING_GAP' | 'NEWS_BRIEFING' | 'REMINDER_ALERT';
   symbol: string;
   title: string;
   message: string;

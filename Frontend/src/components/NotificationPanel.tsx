@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
-import { X, ArrowUpRight, ArrowDownRight, Zap, Sunrise, BarChart3, Bell, Newspaper, ExternalLink, ChevronLeft } from 'lucide-react';
+import { X, ArrowUpRight, ArrowDownRight, Zap, Sunrise, BarChart3, Bell, Newspaper, ExternalLink, ChevronLeft, BellRing } from 'lucide-react';
 import { Notification, NewsArticle } from '../services/api';
 
 const NOTIFICATION_STYLES: Record<string, {
@@ -42,6 +42,14 @@ const NOTIFICATION_STYLES: Record<string, {
         iconBg: 'bg-emerald-500/15',
         badgeBg: 'bg-emerald-500/20 text-emerald-300',
         icon: <Newspaper className="w-5 h-5" />,
+    },
+    REMINDER_ALERT: {
+        label: 'Reminder',
+        bgColor: 'border-l-rose-500',
+        textColor: 'text-rose-400',
+        iconBg: 'bg-rose-500/15',
+        badgeBg: 'bg-rose-500/20 text-rose-300',
+        icon: <BellRing className="w-5 h-5" />,
     },
 };
 
