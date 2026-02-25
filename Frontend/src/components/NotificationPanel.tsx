@@ -175,6 +175,7 @@ export const NotificationPanel: React.FC = () => {
                         {notifications.map((n) => {
                             const style = getStyle(n.type);
                             const isNews = n.type === 'NEWS_BRIEFING';
+                            const isReminder = n.type === 'REMINDER_ALERT';
 
                             return (
                                 <div
@@ -201,7 +202,7 @@ export const NotificationPanel: React.FC = () => {
 
                                             <div className="flex items-baseline gap-2 mb-1">
                                                 <h3 className="font-bold text-lg text-text-primary">{n.symbol}</h3>
-                                                {!isNews && (
+                                                {!isNews && !isReminder && (
                                                     <span className={`text-sm font-bold flex items-center ${n.direction === 'up' ? 'text-positive' : 'text-negative'
                                                         }`}>
                                                         {n.direction === 'up' ? <ArrowUpRight className="w-4 h-4 mr-0.5" /> : <ArrowDownRight className="w-4 h-4 mr-0.5" />}
