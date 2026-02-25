@@ -2,6 +2,7 @@ import os
 import re
 import json
 import requests
+from typing import Optional
 from fastapi import HTTPException
 
 # Cirrascale AI Suite OpenAI-compatible endpoint
@@ -13,6 +14,75 @@ AI100_MODEL = os.getenv("AI100_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
 
 # Maximum retries for JSON parsing failures
 MAX_RETRIES = 2
+
+
+def is_api_configured() -> bool:
+    """Check whether the AI100 API key is available."""
+    return bool(AI100_API_KEY)
+
+
+def chat_completion(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float = 0.3,
+    max_tokens: int = 500,
+) -> Optional[dict]:
+    """
+    Generic reusable wrapper around the AI100 chat completions endpoint.
+    Sends the given system + user prompts, parses the JSON response, and
+    returns the result dict.  Returns None on any failure.
+    Used by reminder_parser (and any other service that needs the LLM).
+    """
+    if not AI100_API_KEY:
+        return None
+
+    url = f"{AI100_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {AI100_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": AI100_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "tool_choice": "none",
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        if response.status_code != 200:
+            print(f"[AI100] Error {response.status_code}: {response.text[:500]}")
+            return None
+
+        data = response.json()
+        message = data["choices"][0]["message"]
+        content = (message.get("content") or "").strip()
+
+        if not content and "tool_calls" in message:
+            try:
+                args_str = message["tool_calls"][0]["function"].get("arguments", "{}")
+                if args_str and args_str.strip() and args_str.strip() != "{}":
+                    return json.loads(args_str)
+            except (KeyError, IndexError, json.JSONDecodeError):
+                pass
+            return None
+
+        if not content:
+            return None
+
+        cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        cleaned = re.sub(r"```json\s*|\s*```", "", cleaned).strip()
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        print(f"[AI100] JSON parse error: {e}")
+        return None
+    except Exception as e:
+        print(f"[AI100] Error: {e}")
+        return None
 
 
 # ─── Prompts ─────────────────────────────────────────────────────────────────

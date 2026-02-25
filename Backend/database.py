@@ -202,6 +202,19 @@ def get_news_notify_count(symbol: str) -> int:
 
 # ===== Dismissed Notifications =====
 
+def dismiss_notification(notification_id: str):
+    db = get_db()
+    db["dismissed_notifications"].upsert({
+        "notification_id": notification_id,
+        "dismissed_at": datetime.now().isoformat()
+    }, pk="notification_id")
+
+def get_dismissed_notification_ids() -> set:
+    db = get_db()
+    if "dismissed_notifications" not in db.table_names():
+        return set()
+    return {row["notification_id"] for row in db["dismissed_notifications"].rows}
+
 def clear_all_dismissed():
     db = get_db()
     if "dismissed_notifications" in db.table_names():
