@@ -16,12 +16,6 @@ import {
   searchStocks,
 } from "../services/api";
 
-// Default tickers always shown in the sidebar
-const DEFAULT_TICKERS = [
-  'META', 'ORCL', 'TSLA', 'NVDA', 'AAPL',
-  'AMZN', 'SOFI', 'ABNB', 'LCID', 'MSFT',
-];
-
 
 // ... (imports)
 
@@ -67,29 +61,21 @@ export const NewsPage: React.FC = () => {
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showAddSearch, setShowAddSearch] = useState<boolean>(false);
 
-  // Build the companies list: defaults + user watchlist
+  // Build the companies list from the user's watchlist only
   const loadCompanies = async () => {
     try {
       const watchlistData = await getWatchlist();
-
-      // Start with defaults
-      const companies: { symbol: string; name?: string; isDefault: boolean }[] = 
-        DEFAULT_TICKERS.map(symbol => ({ symbol, isDefault: true }));
-
-      // Add watchlist items that aren't already in defaults
-      watchlistData.forEach((w: WatchlistItem) => {
-        if (!DEFAULT_TICKERS.includes(w.symbol)) {
-          companies.push({ symbol: w.symbol, name: w.name, isDefault: false });
-        }
-      });
-
+      const companies = watchlistData.map((w: WatchlistItem) => ({
+        symbol: w.symbol,
+        name: w.name,
+        isDefault: false, // All items are watchlist items — all are removable
+      }));
       setAllCompanies(companies);
-      setAvailableTickers(companies.map(c => c.symbol));
+      setAvailableTickers(companies.map((c: { symbol: string }) => c.symbol));
     } catch (e) {
-      console.error('Failed to load companies', e);
-      // Fallback to defaults only
-      setAllCompanies(DEFAULT_TICKERS.map(symbol => ({ symbol, isDefault: true })));
-      setAvailableTickers([...DEFAULT_TICKERS]);
+      console.error('Failed to load watchlist companies', e);
+      setAllCompanies([]);
+      setAvailableTickers([]);
     } finally {
       setWatchlistLoaded(true);
     }

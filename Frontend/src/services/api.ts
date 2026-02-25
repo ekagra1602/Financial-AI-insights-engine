@@ -3,8 +3,8 @@ import { KeyStatistics, StockSymbol } from "../types";
 const API_BASE_URL = "http://localhost:8000/api/v1";
 
 // ===== Frontend In-Memory Cache =====
-// Prevents redundant API calls when switching tabs — data is re-used for 2 mins
-const CACHE_TTL_MS = 120_000; // 2 minutes
+// Prevents redundant API calls when switching tabs — data is re-used for 30s
+const CACHE_TTL_MS = 30_000; // 30 seconds
 
 interface CacheEntry<T> {
   data: T;
@@ -13,6 +13,11 @@ interface CacheEntry<T> {
 
 const historyCache = new Map<string, CacheEntry<any[]>>();
 const statsCache = new Map<string, CacheEntry<KeyStatistics>>();
+const watchlistCache = new Map<'watchlist', CacheEntry<any[]>>();
+
+export function invalidateWatchlistCache() {
+  watchlistCache.delete('watchlist');
+}
 
 function getCached<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
   const entry = cache.get(key);
@@ -278,8 +283,15 @@ export const fetchStockHistory = async (symbol: string, timeframe: string) => {
 };
 
 export const getWatchlist = async () => {
+  const cached = getCached(watchlistCache, 'watchlist');
+  if (cached) {
+    console.log('[Cache HIT] Watchlist');
+    return cached;
+  }
   const res = await fetch(`${API_BASE_URL}/watchlist`);
-  return await res.json();
+  const data = await res.json();
+  setCache(watchlistCache, 'watchlist', data);
+  return data;
 };
 
 export const addToWatchlist = async (symbol: string, name: string) => {
@@ -288,12 +300,14 @@ export const addToWatchlist = async (symbol: string, name: string) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ symbol, name })
   });
+  invalidateWatchlistCache();
 };
 
 export const removeFromWatchlist = async (symbol: string) => {
   await fetch(`${API_BASE_URL}/watchlist/${symbol}`, {
     method: 'DELETE'
   });
+  invalidateWatchlistCache();
 };
 
 // ===== Notifications =====
@@ -355,6 +369,8 @@ export const toggleNewsBriefing = async (symbol: string, enabled: boolean): Prom
     });
     if (!res.ok) {
       console.error(`Failed to toggle news briefing for ${symbol}: ${res.status} ${res.statusText}`);
+    } else {
+      invalidateWatchlistCache();
     }
   } catch (err) {
     console.error(`Error toggling news briefing for ${symbol}:`, err);

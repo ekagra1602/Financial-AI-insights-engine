@@ -60,12 +60,11 @@ const HomePage: React.FC = () => {
         seedDefaultWatchlist();
     }, []);
 
-    // Fetch company name whenever symbol changes
+    // Fetch company name whenever symbol changes (keep previous name visible until new one arrives)
     useEffect(() => {
-        setCompanyName('');
         fetchKeyStatistics(symbol)
             .then(stats => setCompanyName(stats.name || ''))
-            .catch(() => setCompanyName(''));
+            .catch(() => { });
     }, [symbol]);
 
     // Debounced search effect
@@ -144,7 +143,7 @@ const HomePage: React.FC = () => {
         <div className="flex h-[calc(100vh-64px)] p-6 gap-6">
             {/* Left: Stock Graph (2/3 width) */}
             <div className="w-2/3 h-full flex flex-col gap-6 overflow-y-auto pr-2">
-                <div className="w-full min-h-[500px]">
+                <div className="w-full">
                     <StockChart
                         symbol={symbol}
                         companyName={companyName}
