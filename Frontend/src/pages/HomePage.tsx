@@ -1,16 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { StockChart } from '../components/StockChart';
-import { Search, X, Star, Bell, BellRing } from 'lucide-react';
-import { searchStocks, getWatchlist, addToWatchlist, removeFromWatchlist, toggleNewsBriefing } from '../services/api';
+import { Search, X, Star, Bell, BellRing, Plus, Check } from 'lucide-react';
+import { searchStocks, getWatchlist, addToWatchlist, removeFromWatchlist, toggleNewsBriefing, fetchKeyStatistics } from '../services/api';
 import { StockSymbol, WatchlistItem } from '../types';
 import { clsx } from 'clsx';
 import { CompanyStats } from '../components/CompanyStats';
 
+const DEFAULT_WATCHLIST = [
+    { symbol: 'AAPL', name: 'Apple Inc.' },
+    { symbol: 'MSFT', name: 'Microsoft Corporation' },
+    { symbol: 'NVDA', name: 'NVIDIA Corporation' },
+    { symbol: 'AMZN', name: 'Amazon.com Inc.' },
+    { symbol: 'GOOGL', name: 'Alphabet Inc.' },
+    { symbol: 'QCOM', name: 'Qualcomm Incorporated' },
+];
+
 const HomePage: React.FC = () => {
     const [symbol, setSymbol] = useState('QCOM');
+    const [companyName, setCompanyName] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<StockSymbol[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [addedSymbols, setAddedSymbols] = useState<Set<string>>(new Set());
 
     // Watchlist State
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
@@ -28,9 +39,34 @@ const HomePage: React.FC = () => {
         }
     };
 
+    // Seed default stocks if watchlist is empty
+    const seedDefaultWatchlist = async () => {
+        try {
+            const data = await getWatchlist();
+            if (data.length === 0) {
+                await Promise.all(
+                    DEFAULT_WATCHLIST.map(s => addToWatchlist(s.symbol, s.name))
+                );
+                await loadWatchlist();
+            } else {
+                setWatchlist(data);
+            }
+        } catch (e) {
+            console.error("Failed to seed watchlist", e);
+        }
+    };
+
     useEffect(() => {
-        loadWatchlist();
+        seedDefaultWatchlist();
     }, []);
+
+    // Fetch company name whenever symbol changes
+    useEffect(() => {
+        setCompanyName('');
+        fetchKeyStatistics(symbol)
+            .then(stats => setCompanyName(stats.name || ''))
+            .catch(() => setCompanyName(''));
+    }, [symbol]);
 
     // Debounced search effect
     useEffect(() => {
@@ -76,7 +112,7 @@ const HomePage: React.FC = () => {
         if (isInWatchlist) {
             await removeFromWatchlist(symbol);
         } else {
-            await addToWatchlist(symbol, symbol);
+            await addToWatchlist(symbol, companyName || symbol);
         }
         await loadWatchlist();
     };
@@ -95,20 +131,28 @@ const HomePage: React.FC = () => {
         toggleNewsBriefing(sym, newEnabled).then(() => loadWatchlist());
     };
 
+    const handleAddToWatchlist = async (item: StockSymbol) => {
+        await addToWatchlist(item.symbol, item.description || item.symbol);
+        setAddedSymbols(prev => new Set(prev).add(item.symbol));
+        await loadWatchlist();
+        setTimeout(() => {
+            setAddedSymbols(prev => { const s = new Set(prev); s.delete(item.symbol); return s; });
+        }, 2000);
+    };
+
     return (
         <div className="flex h-[calc(100vh-64px)] p-6 gap-6">
             {/* Left: Stock Graph (2/3 width) */}
-            <div className="w-2/3 h-full flex flex-col gap-4 overflow-y-auto pr-2">
-                <div className="w-full flex-1 min-h-[300px]">
+            <div className="w-2/3 h-full flex flex-col gap-6 overflow-y-auto pr-2">
+                <div className="w-full min-h-[500px]">
                     <StockChart
                         symbol={symbol}
+                        companyName={companyName}
                         isInWatchlist={isInWatchlist}
                         onToggleWatchlist={handleToggleWatchlist}
                     />
                 </div>
-                <div className="flex-shrink-0">
-                    <CompanyStats symbol={symbol} />
-                </div>
+                <CompanyStats symbol={symbol} />
             </div>
 
             {/* Right: Search & List (1/3 width) */}
@@ -147,19 +191,41 @@ const HomePage: React.FC = () => {
                             <div className="text-center text-text-secondary py-4">Searching...</div>
                         ) : (
                             <div className="flex flex-col gap-2">
-                                {searchResults.map((item) => (
-                                    <button
-                                        key={item.symbol}
-                                        onClick={() => handleSelectSymbol(item.symbol)}
-                                        className="flex justify-between items-center p-3 hover:bg-surface-light rounded-lg transition-colors text-left group"
-                                    >
-                                        <div>
-                                            <div className="font-bold text-text-primary">{item.displaySymbol}</div>
-                                            <div className="text-xs text-text-secondary truncate max-w-[200px]">{item.description}</div>
+                                {searchResults.map((item) => {
+                                    const alreadyInWatchlist = watchlist.some(w => w.symbol === item.symbol);
+                                    const justAdded = addedSymbols.has(item.symbol);
+                                    return (
+                                        <div
+                                            key={item.symbol}
+                                            className="flex justify-between items-center p-3 hover:bg-surface-light rounded-lg transition-colors group cursor-pointer"
+                                            onClick={() => handleSelectSymbol(item.symbol)}
+                                        >
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-bold text-text-primary">{item.displaySymbol}</div>
+                                                <div className="text-xs text-text-secondary truncate max-w-[180px]">{item.description}</div>
+                                            </div>
+                                            <div className="flex items-center gap-2 ml-2">
+                                                <span className="text-xs text-text-secondary">{item.type}</span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleAddToWatchlist(item); }}
+                                                    disabled={alreadyInWatchlist || justAdded}
+                                                    title={alreadyInWatchlist ? "Already in watchlist" : "Add to watchlist"}
+                                                    className={clsx(
+                                                        "p-1 rounded-full transition-colors flex-shrink-0",
+                                                        alreadyInWatchlist || justAdded
+                                                            ? "text-positive cursor-default"
+                                                            : "text-text-secondary hover:text-primary hover:bg-primary/10"
+                                                    )}
+                                                >
+                                                    {alreadyInWatchlist || justAdded
+                                                        ? <Check className="w-4 h-4" />
+                                                        : <Plus className="w-4 h-4" />
+                                                    }
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="text-xs text-text-secondary group-hover:text-primary">{item.type}</div>
-                                    </button>
-                                ))}
+                                    );
+                                })}
                                 {searchResults.length === 0 && !isSearching && (
                                     <div className="text-center text-text-secondary py-4">No results found</div>
                                 )}

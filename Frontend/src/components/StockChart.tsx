@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Plot from 'react-plotly.js';
 import { fetchStockHistory } from '../services/api';
 import { StockDataPoint } from '../types';
@@ -8,74 +8,87 @@ import { twMerge } from 'tailwind-merge';
 
 interface StockChartProps {
     symbol: string;
+    companyName?: string;
     isInWatchlist?: boolean;
     onToggleWatchlist?: () => void;
 }
 
 const timeframes = ['1D', '5D', '1M', '3M', '1Y', '5Y'];
 
-export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, onToggleWatchlist }) => {
+export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isInWatchlist, onToggleWatchlist }) => {
     const [data, setData] = useState<StockDataPoint[]>([]);
     const [timeframe, setTimeframe] = useState('1D');
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
+    // Auto-refresh timer
     const intervalRef = useRef<number | null>(null);
-    const abortRef = useRef<AbortController | null>(null);
 
-    const loadData = useCallback(async (sig?: AbortSignal) => {
+    const loadData = async () => {
         setLoading(true);
+        // Optional: clear data to show loading screen immediately/explicitly
+        if (data.length > 0) {
+            // Keep old data for transition or empty if strictly desired
+        }
+
         try {
             const history = await fetchStockHistory(symbol, timeframe);
-            if (sig?.aborted) return; // Don't update state if aborted
             setData(history);
         } catch (error) {
-            if (sig?.aborted) return;
             console.error("Failed to load stock data", error);
         } finally {
-            if (!sig?.aborted) setLoading(false);
+            setLoading(false);
         }
-    }, [symbol, timeframe]);
+    };
 
     useEffect(() => {
-        // Cancel any previous in-flight request
-        if (abortRef.current) abortRef.current.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
-
-        loadData(controller.signal);
+        loadData();
 
         // Polling every 5 mins
         if (intervalRef.current) clearInterval(intervalRef.current);
-        intervalRef.current = window.setInterval(() => loadData(controller.signal), 300000);
+        intervalRef.current = window.setInterval(loadData, 300000); // 5 mins
 
         return () => {
-            controller.abort();
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [loadData]);
+    }, [symbol, timeframe]);
 
-    // Determine color
+    // Determine color + compute change from period open → latest close
     const isPositive = data.length > 0 && (data[data.length - 1].close >= data[0].open);
     const lineColor = isPositive ? '#00c805' : '#ff5000';
 
+    const priceChange = data.length > 0 ? data[data.length - 1].close - data[0].open : 0;
+    const percentChange = data.length > 0 && data[0].open !== 0
+        ? (priceChange / data[0].open) * 100
+        : 0;
+
     const xData = data.map(d => d.time);
     const yData = data.map(d => d.close);
+
 
     // Calculate dynamic Y-axis range
     const prices = data.map(d => d.close);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
-    const padding = (maxPrice - minPrice) * 0.05;
+    const padding = (maxPrice - minPrice) * 0.05; // 5% padding
 
     const yRange = data.length > 0
         ? [minPrice - padding, maxPrice + padding]
         : undefined;
 
     return (
-        <div className="w-full h-full p-4 bg-surface rounded-xl shadow-lg border border-border flex flex-col overflow-hidden">
+        <div className="w-full h-full p-4 bg-surface rounded-xl shadow-lg border border-border">
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <div className="flex items-center gap-3">
-                        <h2 className="text-3xl font-bold text-text-primary tracking-widest">{symbol}</h2>
+                        <div>
+                            {companyName ? (
+                                <>
+                                    <h2 className="text-xl font-bold text-text-primary leading-tight">{companyName}</h2>
+                                    <span className="text-xs font-semibold text-text-secondary tracking-widest uppercase">{symbol}</span>
+                                </>
+                            ) : (
+                                <h2 className="text-3xl font-bold text-text-primary tracking-widest">{symbol}</h2>
+                            )}
+                        </div>
                         {onToggleWatchlist && (
                             <button
                                 onClick={onToggleWatchlist}
@@ -92,6 +105,13 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                     <div className={clsx("text-xl font-medium", isPositive ? "text-positive" : "text-negative")}>
                         ${data.length > 0 ? data[data.length - 1].close.toFixed(2) : '0.00'}
                     </div>
+                    {data.length > 0 && (
+                        <div className={clsx("text-sm font-medium mt-0.5", isPositive ? "text-positive" : "text-negative")}>
+                            {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}&nbsp;
+                            ({percentChange >= 0 ? '+' : ''}{percentChange.toFixed(2)}%)&nbsp;
+                            <span className="text-text-secondary font-normal">{timeframe}</span>
+                        </div>
+                    )}
                 </div>
                 <div className="flex space-x-1">
                     {timeframes.map((tf) => (
@@ -111,7 +131,7 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                 </div>
             </div>
 
-            <div className="relative w-full flex-1 min-h-0">
+            <div className="relative w-full h-[500px]">
                 {(loading || data.length === 0) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface/50 backdrop-blur-sm rounded-xl">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mb-2" />
@@ -120,6 +140,10 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                         </div>
                     </div>
                 )}
+                {/* 
+                  NOTE: Plot component needs to be wrapped or size handled carefully 
+                  to fit parent container. 
+                */}
                 <Plot
                     data={[
                         {
@@ -143,9 +167,12 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                             showline: false,
                             color: '#666',
                             tickfont: { color: '#666' },
-                            tickformat: '%b %d %Y %H:%M',
+                            tickformat: '%b %d %Y %H:%M', // Consistent format with year
+                            // Remove gaps (weekends, nights)
                             rangebreaks: [
+                                // Hide weekends for all
                                 { bounds: ['sat', 'mon'] },
+                                // Hide non-trading hours (4pm - 9:30am) ONLY for intraday
                                 ...(['1D', '5D', '1M', '3M'].includes(timeframe) ? [
                                     { bounds: [16, 9.5], pattern: 'hour' as const }
                                 ] : [])
@@ -160,7 +187,7 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, isInWatchlist, o
                             range: yRange,
                         },
                         dragmode: false,
-                        hovermode: 'x unified',
+                        hovermode: 'x unified', // Show all traces on hover
                         hoverlabel: {
                             bgcolor: '#1E1E1E',
                             bordercolor: '#333',

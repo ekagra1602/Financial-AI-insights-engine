@@ -43,6 +43,7 @@ export interface SummarizedNewsArticle {
   keywords: string[];
   url: string;
   ticker: string;
+  url_hash?: string; // Added for similarity search
 }
 
 export interface RelatedArticle {
@@ -91,6 +92,9 @@ export interface KeyStatistics {
   finnhubIndustry?: string;
 }
 
+// Stock Reminder Types
+export type ReminderConditionType = 'price_above' | 'price_below' | 'percent_change' | 'time_based' | 'custom';
+export type ReminderStatus = 'active' | 'triggered' | 'expired' | 'cancelled';
 export interface StockSymbol {
   description: string;
   displaySymbol: string;
@@ -113,53 +117,36 @@ export interface ModelBreakdown {
   contribution: number;
 }
 
-export interface Forecast {
-  probabilityUp: number;
-  expectedReturn: number;
-  quantiles: ForecastQuantiles;
-  uncertainty: number;
-  modelBreakdown: ModelBreakdown[];
+export interface ReminderCondition {
+  type: ReminderConditionType;
+  targetPrice?: number;
+  percentChange?: number;
+  triggerTime?: string;
+  customCondition?: string;
 }
 
-export interface RiskFlag {
+export interface StockReminder {
   id: string;
-  severity: 'high' | 'medium' | 'low';
+  originalText: string;
+  ticker: string;
+  companyName?: string;
+  action: string;
+  condition: ReminderCondition;
+  status: ReminderStatus;
+  createdAt: string;
+  triggeredAt?: string;
+  currentPrice?: number;
+  notes?: string;
+}
+
+export interface ReminderAlert {
+  id: string;
+  reminderId: string;
+  ticker: string;
   message: string;
-}
-
-export interface Driver {
-  id: string;
-  factor: string;
-  impact: number;
-  description: string;
-}
-
-export interface Risk {
-  flags: RiskFlag[];
-  topDrivers: Driver[];
-  confidenceScore: number;
-}
-
-export interface Narrative {
-  stance: Stance;
-  explanation: string;
-}
-
-export interface SentimentReport {
-  ticker: string;
-  companyName: string;
-  horizon: ForecastHorizon;
-  generatedAt: string;
-  forecast: Forecast;
-  risk: Risk;
-  narrative?: Narrative;
-  recentPrices?: number[];
-}
-
-export interface RecentSearch {
-  ticker: string;
-  companyName: string;
-  searchedAt: string;
+  triggeredAt: string;
+  isRead: boolean;
+  originalReminder: StockReminder;
 }
 
 

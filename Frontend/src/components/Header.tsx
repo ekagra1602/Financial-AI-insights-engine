@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Bell, MessageSquare, TrendingUp, Home, Newspaper, Search, User } from 'lucide-react';
+import { Bell, MessageSquare, TrendingUp, Home, Newspaper, Search, User, BellRing } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
 import AccountModal from './AccountModal';
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  onSearch?: (ticker: string) => void;
+}
+
+const Header: React.FC<HeaderProps> = () => {
   const location = useLocation();
   const { notifications, togglePanel, isPanelOpen } = useNotification();
   const [isAccountOpen, setIsAccountOpen] = useState(false);
@@ -38,6 +42,9 @@ const Header: React.FC = () => {
               </Link>
               <Link to="/chatbot" className={`flex items-center gap-2 ${location.pathname === '/chatbot' ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}>
                 <MessageSquare className="w-5 h-5" /><span>Chatbot</span>
+              </Link>
+              <Link to="/reminders" className={`flex items-center gap-2 ${location.pathname === '/reminders' ? 'text-primary' : 'text-text-primary'} hover:text-primary transition-colors`}>
+                <BellRing className="w-5 h-5" /><span>Reminders</span>
               </Link>
 
               {/* ===== Notification Bell ===== */}

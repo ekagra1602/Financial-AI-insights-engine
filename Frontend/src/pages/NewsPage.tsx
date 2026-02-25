@@ -1,12 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { RefreshCw, Filter } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
+import { RefreshCw, Filter, Search, X, Plus } from "lucide-react";
 
-import { NewsCard } from '../components/news/NewsCard';
-import { RelatedArticles } from '../components/news/RelatedArticles';
-import { summarizedNewsArticles, relatedArticles } from '../data/newsData';
-import { SummarizedNewsArticle, RelatedArticle, WatchlistItem } from '../types';
-import { fetchCompanyNews, fetchMarketNews, getWatchlist } from '../services/api';
+import { NewsCard } from "../components/news/NewsCard";
+import { RelatedArticles } from "../components/news/RelatedArticles";
+import { summarizedNewsArticles, relatedArticles } from "../data/newsData";
+import { SummarizedNewsArticle, RelatedArticle, WatchlistItem, StockSymbol } from "../types";
+import {
+  fetchCompanyNews,
+  fetchMarketNews,
+  fetchSimilarNews,
+  getWatchlist,
+  addToWatchlist,
+  removeFromWatchlist,
+  searchStocks,
+} from "../services/api";
+
+// Default tickers always shown in the sidebar
+const DEFAULT_TICKERS = [
+  'META', 'ORCL', 'TSLA', 'NVDA', 'AAPL',
+  'AMZN', 'SOFI', 'ABNB', 'LCID', 'MSFT',
+];
+
 
 // ... (imports)
 
@@ -15,7 +30,7 @@ import { fetchCompanyNews, fetchMarketNews, getWatchlist } from '../services/api
 // Define the type for route parameters
 type NewsPageParams = {
   ticker?: string;
-}
+};
 
 // Helper to format timestamp to "Xh ago"
 const formatTimeAgo = (timestamp: number) => {
@@ -27,7 +42,7 @@ const formatTimeAgo = (timestamp: number) => {
   if (days > 0) return `${days}d ago`;
   if (hours > 0) return `${hours}h ago`;
   if (minutes > 0) return `${minutes}m ago`;
-  return 'Just now';
+  return "Just now";
 };
 
 export const NewsPage: React.FC = () => {
@@ -36,32 +51,97 @@ export const NewsPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isRelatedOpen, setIsRelatedOpen] = useState<boolean>(false);
-  const [currentRelatedArticles, setCurrentRelatedArticles] = useState<RelatedArticle[]>([]);
-  const [relationTitle, setRelationTitle] = useState<string>('');
-  const [lastUpdated, setLastUpdated] = useState<string>('Just now');
+  const [currentRelatedArticles, setCurrentRelatedArticles] = useState<
+    RelatedArticle[]
+  >([]);
+  const [relationTitle, setRelationTitle] = useState<string>("");
+  const [lastUpdated, setLastUpdated] = useState<string>("Just now");
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
-  const [watchlistStocks, setWatchlistStocks] = useState<WatchlistItem[]>([]);
+  const [allCompanies, setAllCompanies] = useState<{ symbol: string; name?: string; isDefault: boolean }[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
   const [availableTickers, setAvailableTickers] = useState<string[]>([]);
+  const [watchlistLoaded, setWatchlistLoaded] = useState<boolean>(false);
+  // Add company search state
+  const [companySearch, setCompanySearch] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<StockSymbol[]>([]);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [showAddSearch, setShowAddSearch] = useState<boolean>(false);
 
-  // Load watchlist from API (same source as homepage)
+  // Build the companies list: defaults + user watchlist
+  const loadCompanies = async () => {
+    try {
+      const watchlistData = await getWatchlist();
+
+      // Start with defaults
+      const companies: { symbol: string; name?: string; isDefault: boolean }[] = 
+        DEFAULT_TICKERS.map(symbol => ({ symbol, isDefault: true }));
+
+      // Add watchlist items that aren't already in defaults
+      watchlistData.forEach((w: WatchlistItem) => {
+        if (!DEFAULT_TICKERS.includes(w.symbol)) {
+          companies.push({ symbol: w.symbol, name: w.name, isDefault: false });
+        }
+      });
+
+      setAllCompanies(companies);
+      setAvailableTickers(companies.map(c => c.symbol));
+    } catch (e) {
+      console.error('Failed to load companies', e);
+      // Fallback to defaults only
+      setAllCompanies(DEFAULT_TICKERS.map(symbol => ({ symbol, isDefault: true })));
+      setAvailableTickers([...DEFAULT_TICKERS]);
+    } finally {
+      setWatchlistLoaded(true);
+    }
+  };
+
   useEffect(() => {
-    const loadWatchlist = async () => {
-      try {
-        const items: WatchlistItem[] = await getWatchlist();
-        setWatchlistStocks(items);
-        const tickers = items.map(s => s.symbol);
-        setAvailableTickers(tickers);
-        setSelectedTickers([]);
-      } catch (e) {
-        console.error('Failed to load watchlist:', e);
-      }
-    };
-    loadWatchlist();
+    loadCompanies();
+    setSelectedTickers([]);
   }, []);
 
+  // Search for companies to add
+  const handleCompanySearch = async (query: string) => {
+    setCompanySearch(query);
+    if (query.trim().length < 1) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const data = await searchStocks(query);
+      // Filter out companies already in the list
+      const existingSymbols = allCompanies.map(c => c.symbol);
+      const filtered = (data.result || []).filter(
+        (s: StockSymbol) => !existingSymbols.includes(s.symbol)
+      ).slice(0, 5);
+      setSearchResults(filtered);
+    } catch (e) {
+      console.error('Search failed', e);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Add a company to the list (saves to backend watchlist)
+  const handleAddCompany = async (symbol: string, name: string) => {
+    await addToWatchlist(symbol, name);
+    setCompanySearch('');
+    setSearchResults([]);
+    setShowAddSearch(false);
+    await loadCompanies();
+  };
+
+  // Remove a user-added company
+  const handleRemoveCompany = async (symbol: string) => {
+    await removeFromWatchlist(symbol);
+    // Also untick it if selected
+    setSelectedTickers(prev => prev.filter(t => t !== symbol));
+    await loadCompanies();
+  };
+
   // Fetch news data based on selected tickers
-  const fetchNewsArticles = async (forceRefresh: boolean = false) => {
+  const fetchNewsArticles = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
 
@@ -83,17 +163,17 @@ export const NewsPage: React.FC = () => {
         const promises = selectedTickers.map(async (t) => {
           try {
             const data = await fetchCompanyNews(t, forceRefresh);
-            return { status: 'fulfilled', value: data, ticker: t };
+            return { status: "fulfilled", value: data, ticker: t };
           } catch (e) {
             console.error(`Failed to fetch news for ${t}`, e);
-            return { status: 'rejected', reason: e, ticker: t };
+            return { status: "rejected", reason: e, ticker: t };
           }
         });
 
         const results = await Promise.all(promises);
 
         results.forEach((result: any) => {
-          if (result.status === 'fulfilled') {
+          if (result.status === "fulfilled") {
             const tick = result.ticker;
             articles.push(...mapNewsResponse(result.value, tick));
           }
@@ -104,14 +184,14 @@ export const NewsPage: React.FC = () => {
         console.log("Fetching general market news");
         const newsList = await fetchMarketNews(forceRefresh);
         // Market news might not have a specific ticker, or might have 'market'
-        articles = mapNewsResponse(newsList, 'Market');
+        articles = mapNewsResponse(newsList, "Market");
       }
 
       // Deduplicate articles based on URL
       const uniqueArticles: SummarizedNewsArticle[] = [];
       const seenUrls = new Set<string>();
 
-      articles.forEach(article => {
+      articles.forEach((article) => {
         if (!seenUrls.has(article.url)) {
           seenUrls.add(article.url);
           uniqueArticles.push(article);
@@ -124,24 +204,26 @@ export const NewsPage: React.FC = () => {
       if (uniqueArticles.length === 0) {
         // Only set error if we really have no articles and we expected some
         if (selectedTickers.length > 0 || ticker) {
-          setError('No news articles available for selected companies.');
+          setError("No news articles available for selected companies.");
         } else {
-          setError('No market news available.');
+          setError("No market news available.");
         }
       }
 
       setNewsArticles(uniqueArticles);
-      setLastUpdated('Just now');
-
+      setLastUpdated("Just now");
     } catch (err) {
       console.error(err);
-      setError('Failed to load news articles. Please try again.');
+      setError("Failed to load news articles. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const mapNewsResponse = (newsList: any[], tickerLabel: string): SummarizedNewsArticle[] => {
+  const mapNewsResponse = (
+    newsList: any[],
+    tickerLabel: string,
+  ): SummarizedNewsArticle[] => {
     return newsList.map((item: any, idx: number) => ({
       id: `${tickerLabel}-${item.datetime}-${idx}`,
       headline: item.headline,
@@ -149,11 +231,12 @@ export const NewsPage: React.FC = () => {
       source: item.source,
       url: item.url,
       publishedTime: formatTimeAgo(item.datetime),
-      sentiment: (item.sentiment || 'neutral') as 'positive' | 'negative' | 'neutral',
-      tone: (item.tone || 'neutral') as 'bullish' | 'bearish' | 'neutral',
+      sentiment: item.sentiment || "neutral",
+      tone: item.tone || "neutral",
       keywords: item.keywords || [],
       ticker: tickerLabel,
-      rawDatetime: item.datetime
+      rawDatetime: item.datetime,
+      url_hash: item.url_hash,
     }));
   };
 
@@ -170,30 +253,33 @@ export const NewsPage: React.FC = () => {
     const allArticles: SummarizedNewsArticle[] = [];
 
     // Get all news articles
-    Object.values(summarizedNewsArticles).forEach(articleArray => {
+    Object.values(summarizedNewsArticles).forEach((articleArray) => {
       allArticles.push(...articleArray);
     });
 
-    const currentArticle = newsArticles.find(article => article.id === articleId);
+    const currentArticle = newsArticles.find(
+      (article) => article.id === articleId,
+    );
 
     if (!currentArticle) return [];
 
     // Find articles that share keywords with the current article
     const related = allArticles
-      .filter(article => article.id !== articleId) // Don't include the current article
-      .filter(article => {
+      .filter((article) => article.id !== articleId) // Don't include the current article
+      .filter((article) => {
         // Check if any keywords match
-        return article.keywords.some(keyword =>
-          keywords.includes(keyword)
-        );
+        return article.keywords.some((keyword) => keywords.includes(keyword));
       })
       .slice(0, 5); // Limit to 5 articles
 
     // Convert to RelatedArticle format
     return related.map((article, index) => {
       // Find the matching keyword
-      const matchingKeywords = article.keywords.filter(k => keywords.includes(k));
-      const matchingKeyword = matchingKeywords.length > 0 ? matchingKeywords[0] : '';
+      const matchingKeywords = article.keywords.filter((k) =>
+        keywords.includes(k),
+      );
+      const matchingKeyword =
+        matchingKeywords.length > 0 ? matchingKeywords[0] : "";
 
       return {
         id: `generated-related-${articleId}-${index}`,
@@ -202,37 +288,70 @@ export const NewsPage: React.FC = () => {
         publishedTime: article.publishedTime,
         sentiment: article.sentiment,
         url: article.url,
-        relationContext: matchingKeyword || 'Related Content'
+        relationContext: matchingKeyword || "Related Content",
       };
     });
   };
 
   // Handle showing related articles
-  const handleShowRelated = (articleId: string) => {
+  const handleShowRelated = async (articleId: string) => {
     // Find the original article to get its keywords for context
-    const originalArticle = newsArticles.find(article => article.id === articleId);
+    const originalArticle = newsArticles.find(
+      (article) => article.id === articleId,
+    );
 
     if (originalArticle) {
+      setRelationTitle(originalArticle.headline);
+      setIsRelatedOpen(true);
+      setCurrentRelatedArticles([]); // Clear while loading
+
+      // Try to fetch from backend (vector similarity)
+      if (originalArticle.url_hash) {
+        try {
+          const similar = await fetchSimilarNews(originalArticle.url_hash);
+          if (similar && similar.length > 0) {
+            const mapped: RelatedArticle[] = similar.map(
+              (item: any, idx: number) => ({
+                id: `sim-${idx}`,
+                headline: item.headline,
+                source: item.source || "Unknown",
+                publishedTime: formatTimeAgo(
+                  item.datetime || Date.now() / 1000,
+                ),
+                sentiment: item.sentiment || "neutral",
+                url: item.url,
+                relationContext: item.similarity
+                  ? `${Math.round(item.similarity * 100)}% Match`
+                  : "Similar Topic",
+              }),
+            );
+            setCurrentRelatedArticles(mapped);
+            return;
+          }
+        } catch (e) {
+          console.error("Error fetching similar news", e);
+        }
+      }
+
+      // Fallback to keyword matching if no hash or API fails or no results
       const keywords = originalArticle.keywords;
       const relatedForArticle = generateRelatedArticles(articleId, keywords);
 
       setCurrentRelatedArticles(relatedForArticle);
-      setRelationTitle(keywords.join(', '));
-      setIsRelatedOpen(true);
     }
   };
 
-  // Handle refreshing news data — force refresh bypasses cache
+  // Handle refreshing news data
   const handleRefresh = () => {
-    fetchNewsArticles(true);
+    fetchNewsArticles(true); // force_refresh = true, bypass cache
   };
 
   // Toggle filter selection - and automatically apply the filter
   const toggleTickerSelection = (tickerSymbol: string) => {
-    setSelectedTickers(prev => {
+    setSelectedTickers((prev) => {
       // Create the new selected tickers array
       if (prev.includes(tickerSymbol)) {
-        return prev.filter(t => t !== tickerSymbol);
+        return prev.filter((t) => t !== tickerSymbol);
       } else {
         return [...prev, tickerSymbol];
       }
@@ -241,15 +360,14 @@ export const NewsPage: React.FC = () => {
 
   // Effect to apply filters whenever the selection changes
   useEffect(() => {
-    // Only run if watchlist is loaded
-    if (watchlistStocks.length > 0) {
+    if (watchlistLoaded) {
       fetchNewsArticles();
     }
   }, [selectedTickers, ticker]);
 
   // Select all tickers and automatically apply
   const selectAllTickers = () => {
-    setSelectedTickers([...availableTickers]);
+    setSelectedTickers(allCompanies.map(c => c.symbol));
   };
 
   // Clear all ticker selections and automatically apply
@@ -257,12 +375,12 @@ export const NewsPage: React.FC = () => {
     setSelectedTickers([]);
   };
 
-  // Effect to fetch news when component mounts
+  // Effect to fetch news when watchlist finishes loading
   useEffect(() => {
-    if (watchlistStocks.length > 0) {
+    if (watchlistLoaded) {
       fetchNewsArticles();
     }
-  }, [watchlistStocks.length]);
+  }, [watchlistLoaded]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -278,11 +396,13 @@ export const NewsPage: React.FC = () => {
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Updated {lastUpdated} • {newsArticles.length} articles
-                {selectedTickers.length > 0 && selectedTickers.length < availableTickers.length && (
-                  <span className="ml-2">
-                    • Filtered: {selectedTickers.length}/{availableTickers.length} companies
-                  </span>
-                )}
+                {selectedTickers.length > 0 &&
+                  selectedTickers.length < availableTickers.length && (
+                    <span className="ml-2">
+                      • Filtered: {selectedTickers.length}/
+                      {availableTickers.length} companies
+                    </span>
+                  )}
               </p>
             </div>
 
@@ -293,11 +413,12 @@ export const NewsPage: React.FC = () => {
               >
                 <Filter size={16} className="mr-2" />
                 Filter
-                {selectedTickers.length > 0 && selectedTickers.length < availableTickers.length && (
-                  <span className="ml-1.5 w-5 h-5 bg-primary rounded-full text-black text-xs flex items-center justify-center">
-                    {selectedTickers.length}
-                  </span>
-                )}
+                {selectedTickers.length > 0 &&
+                  selectedTickers.length < availableTickers.length && (
+                    <span className="ml-1.5 w-5 h-5 bg-primary rounded-full text-black text-xs flex items-center justify-center">
+                      {selectedTickers.length}
+                    </span>
+                  )}
               </button>
 
               <button
@@ -305,7 +426,10 @@ export const NewsPage: React.FC = () => {
                 disabled={loading}
                 className="inline-flex items-center px-4 py-2 bg-primary text-black rounded-lg hover:bg-primary/90 transition-colors disabled:bg-gray-400 disabled:text-gray-700"
               >
-                <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  size={16}
+                  className={`mr-2 ${loading ? "animate-spin" : ""}`}
+                />
                 Refresh
               </button>
             </div>
@@ -315,24 +439,29 @@ export const NewsPage: React.FC = () => {
           <div className="space-y-4">
             {loading ? (
               // Loading skeleton
-              Array(3).fill(0).map((_, idx) => (
-                <div key={idx} className="bg-white dark:bg-slate-800 rounded-xl shadow-md overflow-hidden mb-4 p-4 border border-gray-200 dark:border-gray-700">
-                  <div className="animate-pulse">
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-md w-3/4 mb-3"></div>
-                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-md w-full mb-2"></div>
-                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-md w-5/6 mb-3"></div>
-                    <div className="flex space-x-2 mb-3">
-                      <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-full w-24"></div>
-                      <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-full w-24"></div>
-                    </div>
-                    <div className="flex space-x-2">
-                      <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-lg w-16"></div>
-                      <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-lg w-16"></div>
-                      <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-lg w-16"></div>
+              Array(3)
+                .fill(0)
+                .map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white dark:bg-slate-800 rounded-xl shadow-md overflow-hidden mb-4 p-4 border border-gray-200 dark:border-gray-700"
+                  >
+                    <div className="animate-pulse">
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-md w-3/4 mb-3"></div>
+                      <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-md w-full mb-2"></div>
+                      <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-md w-5/6 mb-3"></div>
+                      <div className="flex space-x-2 mb-3">
+                        <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-full w-24"></div>
+                        <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-full w-24"></div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-lg w-16"></div>
+                        <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-lg w-16"></div>
+                        <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded-lg w-16"></div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                ))
             ) : error ? (
               // Error state
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg p-4 text-center">
@@ -347,7 +476,9 @@ export const NewsPage: React.FC = () => {
             ) : newsArticles.length === 0 ? (
               // Empty state
               <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 text-center">
-                <p className="text-gray-600 dark:text-gray-300">No news articles available.</p>
+                <p className="text-gray-600 dark:text-gray-300">
+                  No news articles available.
+                </p>
               </div>
             ) : (
               // News articles list
@@ -363,9 +494,13 @@ export const NewsPage: React.FC = () => {
         </div>
 
         {/* Right Sidebar - Filters */}
-        <div className={`lg:w-1/4 lg:block ${isFilterOpen ? 'block' : 'hidden'}`}>
+        <div
+          className={`lg:w-1/4 lg:block ${isFilterOpen ? "block" : "hidden"}`}
+        >
           <div className="sticky top-24 bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Companies</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              Companies
+            </h3>
 
             <div className="flex justify-between mb-4">
               <button
@@ -382,33 +517,107 @@ export const NewsPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto py-1 pr-1">
-              {watchlistStocks.map((stock) => (
+            <div className="space-y-1 max-h-[50vh] overflow-y-auto py-1 pr-1">
+              {allCompanies.map((company) => (
                 <label
-                  key={stock.symbol}
-                  className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors
-                    ${availableTickers.includes(stock.symbol)
-                      ? "hover:bg-gray-100 dark:hover:bg-gray-700"
-                      : "opacity-50"}`}
+                  key={company.symbol}
+                  className="flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   <div className="flex items-center">
                     <input
                       type="checkbox"
                       className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
-                      checked={selectedTickers.includes(stock.symbol)}
-                      onChange={() => toggleTickerSelection(stock.symbol)}
-                      disabled={!availableTickers.includes(stock.symbol)}
+                      checked={selectedTickers.includes(company.symbol)}
+                      onChange={() => toggleTickerSelection(company.symbol)}
                     />
                     <span className="ml-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-                      {stock.symbol}
+                      {company.symbol}
                     </span>
+                    {company.name && (
+                      <span className="ml-1 text-xs text-gray-400 truncate max-w-[80px]">
+                        {company.name}
+                      </span>
+                    )}
                   </div>
 
-                  <div className={`text-sm ${(stock.change ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {(stock.change ?? 0) >= 0 ? '+' : ''}{(stock.change ?? 0).toFixed(2)}%
-                  </div>
+                  {!company.isDefault && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleRemoveCompany(company.symbol);
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      title={`Remove ${company.symbol}`}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </label>
               ))}
+            </div>
+
+            {/* Add Company Section */}
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              {!showAddSearch ? (
+                <button
+                  onClick={() => setShowAddSearch(true)}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm text-primary hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <Plus size={14} />
+                  Add Company
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search ticker or name..."
+                      value={companySearch}
+                      onChange={(e) => handleCompanySearch(e.target.value)}
+                      autoFocus
+                      className="w-full pl-8 pr-8 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <button
+                      onClick={() => { setShowAddSearch(false); setCompanySearch(''); setSearchResults([]); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  {isSearching && (
+                    <p className="text-xs text-gray-400 px-1">Searching...</p>
+                  )}
+
+                  {searchResults.length > 0 && (
+                    <div className="space-y-1">
+                      {searchResults.map((result) => (
+                        <button
+                          key={result.symbol}
+                          onClick={() => handleAddCompany(result.symbol, result.description)}
+                          className="w-full flex items-center justify-between p-2 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <div className="text-left">
+                            <span className="font-medium text-gray-800 dark:text-gray-200">
+                              {result.symbol}
+                            </span>
+                            <span className="ml-2 text-xs text-gray-400 truncate">
+                              {result.description}
+                            </span>
+                          </div>
+                          <Plus size={14} className="text-primary flex-shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {companySearch.trim().length > 0 && !isSearching && searchResults.length === 0 && (
+                    <p className="text-xs text-gray-400 px-1">No results found</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

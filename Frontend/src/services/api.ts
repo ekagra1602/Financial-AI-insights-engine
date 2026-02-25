@@ -2,33 +2,6 @@ import { KeyStatistics, StockSymbol } from "../types";
 
 const API_BASE_URL = "http://localhost:8000/api/v1";
 
-// ===== Frontend In-Memory Cache =====
-const CACHE_TTL_MS = 120_000; // 2 minutes
-
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-const historyCache = new Map<string, CacheEntry<any[]>>();
-const statsCache = new Map<string, CacheEntry<KeyStatistics>>();
-
-function getCached<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.data;
-}
-
-function setCache<T>(cache: Map<string, CacheEntry<T>>, key: string, data: T) {
-  cache.set(key, { data, timestamp: Date.now() });
-}
-
-// ===== API Functions =====
-
 export const searchStocks = async (
   query: string
 ): Promise<{ count: number; result: StockSymbol[] }> => {
@@ -44,19 +17,23 @@ export const searchStocks = async (
   }
 };
 
+export const fetchCompanies = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/companies`);
+    if (!response.status.toString().startsWith('2')) return [];
+    return await response.json();
+  } catch (e) {
+    console.error(e);
+    return [];
+  }
+};
+
 export const fetchKeyStatistics = async (
   symbol: string
 ): Promise<KeyStatistics> => {
-  // Check frontend cache first
-  const cached = getCached(statsCache, symbol);
-  if (cached) {
-    console.log(`[Cache HIT] Stats for ${symbol}`);
-    return cached;
-  }
-
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
     const response = await fetch(`${API_BASE_URL}/quote?symbol=${symbol}`, {
       signal: controller.signal,
@@ -67,16 +44,14 @@ export const fetchKeyStatistics = async (
     if (!response.ok) {
       throw new Error("Failed to fetch key statistics");
     }
-    const data = await response.json();
-    setCache(statsCache, symbol, data);
-    return data;
+    return await response.json();
   } catch (error) {
     console.error("Error fetching key statistics:", error);
     throw error;
   }
 };
 
-export const fetchCompanyNews = async (ticker: string, forceRefresh: boolean = false) => {
+export const fetchCompanyNews = async (ticker: string, forceRefresh = false) => {
   try {
     const params = forceRefresh ? '?force_refresh=true' : '';
     const response = await fetch(`${API_BASE_URL}/news/${ticker}${params}`);
@@ -90,7 +65,7 @@ export const fetchCompanyNews = async (ticker: string, forceRefresh: boolean = f
   }
 };
 
-export const fetchMarketNews = async (forceRefresh: boolean = false) => {
+export const fetchMarketNews = async (forceRefresh = false) => {
   try {
     const params = forceRefresh ? '?force_refresh=true' : '';
     const response = await fetch(`${API_BASE_URL}/news${params}`);
@@ -104,22 +79,153 @@ export const fetchMarketNews = async (forceRefresh: boolean = false) => {
   }
 };
 
-export const fetchStockHistory = async (symbol: string, timeframe: string) => {
-  // Check frontend cache first
-  const cacheKey = `${symbol}:${timeframe}`;
-  const cached = getCached(historyCache, cacheKey);
-  if (cached) {
-    console.log(`[Cache HIT] History for ${cacheKey}`);
-    return cached;
-  }
+// Reminder parsing via AI100 LLM
+export interface ParsedReminderResponse {
+  ticker: string | null;
+  company_name: string | null;
+  action: string | null;
+  condition_type: 'price_above' | 'price_below' | 'percent_change' | 'time_based' | 'custom';
+  target_price: number | null;
+  percent_change: number | null;
+  trigger_time: string | null;
+  current_price: number | null;
+  notes: string | null;
+  source: string;
+}
 
+export const parseReminderText = async (text: string): Promise<ParsedReminderResponse> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/reminders/parse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to parse reminder');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error parsing reminder:', error);
+    throw error;
+  }
+};
+
+// ── Reminder persistence ──────────────────────────────────────────────────────
+
+export interface SavedReminderResponse {
+  id: string;
+  original_text: string;
+  ticker: string;
+  company_name: string | null;
+  action: string;
+  status: 'active' | 'triggered' | 'expired' | 'cancelled';
+  condition_type: 'price_above' | 'price_below' | 'percent_change' | 'time_based' | 'custom';
+  target_price: number | null;
+  percent_change: number | null;
+  trigger_time: string | null;
+  custom_condition: string | null;
+  created_at: string;
+  triggered_at: string | null;
+  current_price: number | null;
+  notes: string | null;
+}
+
+export interface SaveReminderPayload {
+  original_text: string;
+  ticker: string;
+  company_name?: string | null;
+  action: string;
+  condition_type: string;
+  target_price?: number | null;
+  percent_change?: number | null;
+  trigger_time?: string | null;
+  custom_condition?: string | null;
+  current_price?: number | null;
+  notes?: string | null;
+}
+
+export const saveReminder = async (payload: SaveReminderPayload): Promise<SavedReminderResponse> => {
+  const response = await fetch(`${API_BASE_URL}/reminders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error('Failed to save reminder');
+  return response.json();
+};
+
+export const fetchReminders = async (): Promise<SavedReminderResponse[]> => {
+  const response = await fetch(`${API_BASE_URL}/reminders`);
+  if (!response.ok) throw new Error('Failed to fetch reminders');
+  return response.json();
+};
+
+export const updateReminderStatus = async (
+  id: string,
+  status: 'active' | 'triggered' | 'expired' | 'cancelled'
+): Promise<SavedReminderResponse> => {
+  const response = await fetch(`${API_BASE_URL}/reminders/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) throw new Error('Failed to update reminder status');
+  return response.json();
+};
+
+export const deleteReminder = async (id: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/reminders/${id}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to delete reminder');
+};
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+
+export interface AlertResponse {
+  id: string;
+  reminder_id: string;
+  ticker: string;
+  message: string;
+  triggered_at: string;
+  is_read: boolean;
+}
+
+export const fetchAlerts = async (): Promise<AlertResponse[]> => {
+  const response = await fetch(`${API_BASE_URL}/alerts`);
+  if (!response.ok) throw new Error('Failed to fetch alerts');
+  return response.json();
+};
+
+export const markAlertRead = async (id: string): Promise<AlertResponse> => {
+  const response = await fetch(`${API_BASE_URL}/alerts/${id}/read`, { method: 'PATCH' });
+  if (!response.ok) throw new Error('Failed to mark alert as read');
+  return response.json();
+};
+
+export const dismissAlert = async (id: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/alerts/${id}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to dismiss alert');
+};
+export const fetchSimilarNews = async (urlHash: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/news/similar/${urlHash}`);
+    if (!response.status.toString().startsWith('2')) {
+      // 404 or others -> return empty
+      return [];
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching similar news:', error);
+    return [];
+  }
+};
+
+export const fetchStockHistory = async (symbol: string, timeframe: string) => {
   try {
     const response = await fetch(`${API_BASE_URL}/history/${symbol}?timeframe=${timeframe}`);
     if (!response.ok) {
       throw new Error('Failed to fetch stock history');
     }
     const json = await response.json();
-    setCache(historyCache, cacheKey, json.data);
     return json.data;
   } catch (error) {
     console.error('Error fetching stock history:', error);
