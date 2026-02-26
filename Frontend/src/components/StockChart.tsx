@@ -131,13 +131,20 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
                 </div>
             </div>
 
-            <div className="relative w-full h-[500px]">
-                {(loading || data.length === 0) && (
+            <div className="relative w-full min-h-[280px] h-[45vh]">
+                {/* Full overlay: only when we have NO data at all yet */}
+                {(loading && data.length === 0) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface/50 backdrop-blur-sm rounded-xl">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mb-2" />
                         <div className="text-sm font-medium text-text-secondary animate-pulse">
                             Loading market data...
                         </div>
+                    </div>
+                )}
+                {/* Small corner spinner: when refreshing but we already have data */}
+                {(loading && data.length > 0) && (
+                    <div className="absolute top-2 right-2 z-10">
+                        <RefreshCw className="w-4 h-4 animate-spin text-text-secondary" />
                     </div>
                 )}
                 {/* 

@@ -2,6 +2,37 @@ import { KeyStatistics, StockSymbol } from "../types";
 
 const API_BASE_URL = "http://localhost:8000/api/v1";
 
+// ===== Frontend In-Memory Cache =====
+// Prevents redundant API calls when switching tabs — data is re-used for 30s
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const historyCache = new Map<string, CacheEntry<any[]>>();
+const statsCache = new Map<string, CacheEntry<KeyStatistics>>();
+const watchlistCache = new Map<'watchlist', CacheEntry<any[]>>();
+
+export function invalidateWatchlistCache() {
+  watchlistCache.delete('watchlist');
+}
+
+function getCached<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCache<T>(cache: Map<string, CacheEntry<T>>, key: string, data: T) {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
 export const searchStocks = async (
   query: string
 ): Promise<{ count: number; result: StockSymbol[] }> => {
@@ -18,22 +49,29 @@ export const searchStocks = async (
 };
 
 export const fetchCompanies = async () => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/companies`);
-        if (!response.status.toString().startsWith('2')) return [];
-        return await response.json();
-    } catch (e) {
-        console.error(e);
-        return [];
-    }
+  try {
+    const response = await fetch(`${API_BASE_URL}/companies`);
+    if (!response.status.toString().startsWith('2')) return [];
+    return await response.json();
+  } catch (e) {
+    console.error(e);
+    return [];
+  }
 };
 
 export const fetchKeyStatistics = async (
   symbol: string
 ): Promise<KeyStatistics> => {
+  // Check frontend cache first — avoids re-fetching on tab switch
+  const cached = getCached(statsCache, symbol);
+  if (cached) {
+    console.log(`[Cache HIT] Stats for ${symbol}`);
+    return cached;
+  }
+
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
     const response = await fetch(`${API_BASE_URL}/quote?symbol=${symbol}`, {
       signal: controller.signal,
@@ -44,7 +82,9 @@ export const fetchKeyStatistics = async (
     if (!response.ok) {
       throw new Error("Failed to fetch key statistics");
     }
-    return await response.json();
+    const data = await response.json();
+    setCache(statsCache, symbol, data);
+    return data;
   } catch (error) {
     console.error("Error fetching key statistics:", error);
     throw error;
@@ -209,8 +249,8 @@ export const fetchSimilarNews = async (urlHash: string) => {
   try {
     const response = await fetch(`${API_BASE_URL}/news/similar/${urlHash}`);
     if (!response.status.toString().startsWith('2')) {
-       // 404 or others -> return empty
-       return [];
+      // 404 or others -> return empty
+      return [];
     }
     return await response.json();
   } catch (error) {
@@ -220,12 +260,21 @@ export const fetchSimilarNews = async (urlHash: string) => {
 };
 
 export const fetchStockHistory = async (symbol: string, timeframe: string) => {
+  // Check frontend cache first — avoids re-fetching on tab switch
+  const cacheKey = `${symbol}:${timeframe}`;
+  const cached = getCached(historyCache, cacheKey);
+  if (cached) {
+    console.log(`[Cache HIT] History for ${cacheKey}`);
+    return cached;
+  }
+
   try {
     const response = await fetch(`${API_BASE_URL}/history/${symbol}?timeframe=${timeframe}`);
     if (!response.ok) {
       throw new Error('Failed to fetch stock history');
     }
     const json = await response.json();
+    setCache(historyCache, cacheKey, json.data);
     return json.data;
   } catch (error) {
     console.error('Error fetching stock history:', error);
@@ -234,8 +283,15 @@ export const fetchStockHistory = async (symbol: string, timeframe: string) => {
 };
 
 export const getWatchlist = async () => {
+  const cached = getCached(watchlistCache, 'watchlist');
+  if (cached) {
+    console.log('[Cache HIT] Watchlist');
+    return cached;
+  }
   const res = await fetch(`${API_BASE_URL}/watchlist`);
-  return await res.json();
+  const data = await res.json();
+  setCache(watchlistCache, 'watchlist', data);
+  return data;
 };
 
 export const addToWatchlist = async (symbol: string, name: string) => {
@@ -244,10 +300,133 @@ export const addToWatchlist = async (symbol: string, name: string) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ symbol, name })
   });
+  invalidateWatchlistCache();
 };
 
 export const removeFromWatchlist = async (symbol: string) => {
   await fetch(`${API_BASE_URL}/watchlist/${symbol}`, {
     method: 'DELETE'
+  });
+  invalidateWatchlistCache();
+};
+
+// ===== Notifications =====
+
+export interface NewsArticle {
+  headline: string;
+  summary: string;
+  url: string;
+  source: string;
+}
+
+export interface Notification {
+  id: string;
+  type: 'DAILY_EOD' | 'MOMENTUM_2H' | 'MORNING_GAP' | 'NEWS_BRIEFING' | 'REMINDER_ALERT';
+  symbol: string;
+  title: string;
+  message: string;
+  direction: 'up' | 'down' | 'neutral';
+  percentChange: number;
+  timestamp: string;
+  articles?: NewsArticle[];  // Only for NEWS_BRIEFING
+}
+
+export const fetchNotifications = async (): Promise<Notification[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/notifications`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch notifications');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    return [];
+  }
+};
+
+export const dismissNotification = async (notificationId: string): Promise<void> => {
+  await fetch(`${API_BASE_URL}/notifications/dismiss`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notification_id: notificationId })
+  });
+};
+
+export const clearAllNotifications = async (): Promise<void> => {
+  await fetch(`${API_BASE_URL}/notifications/clear-all`, {
+    method: 'POST'
+  });
+};
+
+// ===== News Briefing (Dedicated Endpoints) =====
+
+export const toggleNewsBriefing = async (symbol: string, enabled: boolean): Promise<void> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/news-briefing/toggle/${symbol}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    if (!res.ok) {
+      console.error(`Failed to toggle news briefing for ${symbol}: ${res.status} ${res.statusText}`);
+    } else {
+      invalidateWatchlistCache();
+    }
+  } catch (err) {
+    console.error(`Error toggling news briefing for ${symbol}:`, err);
+  }
+};
+
+export const triggerNewsBriefingGeneration = async (): Promise<void> => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/news-briefing/generate`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      console.error(`Failed to trigger news briefing generation: ${res.status}`);
+    }
+  } catch (err) {
+    console.error('Error triggering news briefing generation:', err);
+  }
+};
+
+// ===== Account Settings =====
+
+const ACCOUNT_BASE = "http://localhost:8000/api/v1/account";
+
+export interface AccountSettings {
+  email: string;
+  email_confirmed: boolean;
+  email_notifications_enabled: boolean;
+}
+
+export const getAccountSettings = async (): Promise<AccountSettings> => {
+  const res = await fetch(`${ACCOUNT_BASE}/settings`);
+  return res.json();
+};
+
+export const saveEmail = async (email: string): Promise<{ message: string }> => {
+  const res = await fetch(`${ACCOUNT_BASE}/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  return res.json();
+};
+
+export const confirmEmail = async (code: string): Promise<{ confirmed: boolean; message: string }> => {
+  const res = await fetch(`${ACCOUNT_BASE}/confirm-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  return res.json();
+};
+
+export const toggleEmailNotifications = async (enabled: boolean): Promise<void> => {
+  await fetch(`${ACCOUNT_BASE}/email-notifications`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
   });
 };

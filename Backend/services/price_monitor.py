@@ -74,6 +74,7 @@ async def check_single_reminder(reminder: dict):
     """
     from database import update_reminder_status, create_alert
     from services.finnhub_client import get_finnhub_quote
+    from services.email_service import send_alert_email
 
     try:
         quote = get_finnhub_quote(reminder["ticker"])
@@ -84,18 +85,21 @@ async def check_single_reminder(reminder: dict):
 
     if current_price and _check_condition(reminder, current_price):
         update_reminder_status(reminder["id"], "triggered")
-        create_alert({
+        alert = {
             "reminder_id": reminder["id"],
             "ticker":      reminder["ticker"],
             "message":     _build_message(reminder, current_price),
-        })
+        }
+        create_alert(alert)
+        send_alert_email(alert, reminder)
         print(f"[Monitor] Instant trigger — {reminder['ticker']} condition already met at ${current_price:.2f}")
 
 
 async def run_check():
     """Single pass: check all active reminders and fire alerts where conditions are met."""
-    from database import get_all_reminders, update_reminder_status, create_alert
+    from database import get_all_reminders, update_reminder_status, create_alert, get_reminder_by_id
     from services.finnhub_client import get_finnhub_quote
+    from services.email_service import send_alert_email
 
     reminders = get_all_reminders()
     active = [r for r in reminders if r["status"] == "active"]
@@ -125,11 +129,13 @@ async def run_check():
 
         if _check_condition(reminder, price):
             update_reminder_status(reminder["id"], "triggered")
-            create_alert({
+            alert = {
                 "reminder_id": reminder["id"],
                 "ticker":      reminder["ticker"],
                 "message":     _build_message(reminder, price),
-            })
+            }
+            create_alert(alert)
+            send_alert_email(alert, reminder)
             triggered_count += 1
             print(
                 f"[Monitor] TRIGGERED — {reminder['ticker']} "
