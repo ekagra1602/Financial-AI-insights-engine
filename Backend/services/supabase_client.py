@@ -47,6 +47,68 @@ class SupabaseClient:
         except Exception as e:
             print(f"Error saving article to Supabase: {e}")
 
+    def get_financial_metadata(self, ticker: str, period_type: str = None, limit: int = 8) -> list:
+        """
+        Retrieve stored financial metadata rows for a ticker, sorted by period_end_date DESC.
+        """
+        if not self.client:
+            return []
+        try:
+            query = (
+                self.client
+                .table("financial_metadata")
+                .select("*")
+                .eq("ticker", ticker)
+                .order("period_end_date", desc=True)
+                .limit(limit)
+            )
+            if period_type:
+                query = query.eq("period_type", period_type)
+            response = query.execute()
+            return response.data
+        except Exception as e:
+            print(f"Error fetching financial metadata from Supabase: {e}")
+            return []
+
+    def get_financial_period(self, ticker: str, period_type: str, period_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a single financial period row by its composite primary key.
+        Mirrors get_article_by_hash() for cache-check pattern.
+        """
+        if not self.client:
+            return None
+        try:
+            response = (
+                self.client
+                .table("financial_metadata")
+                .select("*")
+                .eq("ticker", ticker)
+                .eq("period_type", period_type)
+                .eq("period_key", period_key)
+                .execute()
+            )
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"Error fetching financial period from Supabase: {e}")
+            return None
+
+    def save_financial_metadata(self, record: Dict[str, Any]):
+        """
+        Upsert a financial_metadata row on composite PK (ticker, period_type, period_key).
+        Mirrors save_article() for the news pipeline.
+        """
+        if not self.client:
+            return
+        try:
+            self.client.table("financial_metadata").upsert(
+                record,
+                on_conflict="ticker,period_type,period_key"
+            ).execute()
+        except Exception as e:
+            print(f"Error saving financial metadata to Supabase: {e}")
+
     def get_recent_articles(self, ticker: str = None, limit: int = 5, from_date: str = None) -> list:
         """
         Get recent articles for a ticker from DB.

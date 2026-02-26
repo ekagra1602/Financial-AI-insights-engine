@@ -38,6 +38,53 @@ ON news_articles FOR INSERT
 WITH CHECK (true);
 
 -- Policy for updates
-CREATE POLICY "Enable update for users based on email" 
-ON news_articles FOR UPDATE 
+CREATE POLICY "Enable update for users based on email"
+ON news_articles FOR UPDATE
 USING (true);
+
+-- ============================================================
+-- financial_metadata table
+-- Stores normalized quarterly/annual financial data per ticker
+-- One row per (ticker, period_type, period_key)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS financial_metadata (
+    ticker              TEXT NOT NULL,
+    period_type         TEXT NOT NULL,        -- 'quarterly' | 'annual'
+    period_key          TEXT NOT NULL,        -- e.g. '2024-Q3' | '2023-FY'
+    fiscal_year         INTEGER,
+    fiscal_quarter      INTEGER,              -- NULL for annual
+    period_end_date     DATE,
+
+    -- Raw normalized financial data (JSONB for schema flexibility)
+    financials          JSONB NOT NULL DEFAULT '{}',
+    key_metrics         JSONB NOT NULL DEFAULT '{}',
+    eps_data            JSONB,
+
+    -- Pre-built structured input for downstream LLM sentiment generation
+    llm_input           JSONB NOT NULL DEFAULT '{}',
+
+    fetched_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    PRIMARY KEY (ticker, period_type, period_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_metadata_ticker
+    ON financial_metadata(ticker);
+
+CREATE INDEX IF NOT EXISTS idx_financial_metadata_period_end_date
+    ON financial_metadata(period_end_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_financial_metadata_ticker_period
+    ON financial_metadata(ticker, period_end_date DESC);
+
+ALTER TABLE financial_metadata ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Public financial_metadata viewable by everyone"
+ON financial_metadata FOR SELECT USING (true);
+
+CREATE POLICY "Enable insert for financial_metadata"
+ON financial_metadata FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Enable update for financial_metadata"
+ON financial_metadata FOR UPDATE USING (true);
