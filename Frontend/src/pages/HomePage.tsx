@@ -129,8 +129,8 @@ const HomePage: React.FC = () => {
     return (
         <div className="flex h-[calc(100vh-64px)] p-6 gap-6">
             {/* Left: Stock Graph (2/3 width) */}
-            <div className="w-2/3 h-full flex flex-col gap-6 overflow-y-auto pr-2">
-                <div className="w-full min-h-[500px]">
+            <div className="w-2/3 h-full flex flex-col gap-6 pr-2 overflow-y-auto">
+                <div className="w-full">
                     <StockChart
                         symbol={symbol}
                         companyName={companyName}
@@ -138,7 +138,9 @@ const HomePage: React.FC = () => {
                         onToggleWatchlist={handleToggleWatchlist}
                     />
                 </div>
-                <CompanyStats symbol={symbol} />
+                <div className="mt-4 flex-none">
+                    <CompanyStats symbol={symbol} />
+                </div>
             </div>
 
             {/* Right: Search & List (1/3 width) */}
