@@ -75,7 +75,7 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
         : undefined;
 
     return (
-        <div className="w-full h-full p-4 bg-surface rounded-xl shadow-lg border border-border">
+        <div className="w-full p-4 bg-surface rounded-xl shadow-lg border border-border">
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <div className="flex items-center gap-3">
@@ -131,9 +131,8 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
                 </div>
             </div>
 
-            <div className="relative w-full min-h-[280px] h-[45vh]">
-                {/* Full overlay: only when we have NO data at all yet */}
-                {(loading && data.length === 0) && (
+            <div className="relative w-full h-[340px] sm:h-[380px] lg:h-[440px]">
+                {(loading || data.length === 0) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface/50 backdrop-blur-sm rounded-xl">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mb-2" />
                         <div className="text-sm font-medium text-text-secondary animate-pulse">
