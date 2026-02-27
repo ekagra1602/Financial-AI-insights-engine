@@ -34,11 +34,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routers.reminders import router as reminders_router
-
 # Include routers
 app.include_router(finnhub_router, prefix="/api/v1")
-app.include_router(reminders_router, prefix="/api/v1")
+
+try:
+    from routers.reminders import router as reminders_router
+    app.include_router(reminders_router, prefix="/api/v1")
+except Exception as e:
+    print(f"Warning: reminders router not loaded ({e})")
 
 try:
     from routers.news import router as news_router
@@ -58,6 +61,23 @@ try:
 except Exception as e:
     print(f"Warning: watchlist router not loaded ({e})")
 
+try:
+    from routers.notifications import router as notifications_router
+    app.include_router(notifications_router, prefix="/api/v1")
+except Exception as e:
+    print(f"Warning: notifications router not loaded ({e})")
+
+try:
+    from routers.news_briefing import router as news_briefing_router
+    app.include_router(news_briefing_router, prefix="/api/v1")
+except Exception as e:
+    print(f"Warning: news_briefing router not loaded ({e})")
+
+try:
+    from routers.account import router as account_router
+    app.include_router(account_router)
+except Exception as e:
+    print(f"Warning: account router not loaded ({e})")
 
 @app.get("/")
 async def root():

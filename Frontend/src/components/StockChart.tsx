@@ -140,6 +140,12 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
                         </div>
                     </div>
                 )}
+                {/* Small corner spinner: when refreshing but we already have data */}
+                {(loading && data.length > 0) && (
+                    <div className="absolute top-2 right-2 z-10">
+                        <RefreshCw className="w-4 h-4 animate-spin text-text-secondary" />
+                    </div>
+                )}
                 {/* 
                   NOTE: Plot component needs to be wrapped or size handled carefully 
                   to fit parent container. 
