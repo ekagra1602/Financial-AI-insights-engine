@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import sqlite3
 import uuid
+from typing import Optional
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "stock_data.db")
 
@@ -286,14 +287,14 @@ def get_all_reminders() -> list:
     db = get_db()
     return list(db["reminders"].rows_where(order_by="created_at desc"))
 
-def get_reminder_by_id(reminder_id: str) -> dict | None:
+def get_reminder_by_id(reminder_id: str) -> Optional[dict]:
     db = get_db()
     try:
         return db["reminders"].get(reminder_id)
     except Exception:
         return None
 
-def update_reminder_status(reminder_id: str, status: str) -> dict | None:
+def update_reminder_status(reminder_id: str, status: str) -> Optional[dict]:
     db = get_db()
     updates = {"status": status}
     if status == "triggered":
@@ -328,7 +329,7 @@ def get_all_alerts() -> list:
     db = get_db()
     return list(db["alerts"].rows_where(order_by="triggered_at desc"))
 
-def mark_alert_read(alert_id: str) -> dict | None:
+def mark_alert_read(alert_id: str) -> Optional[dict]:
     db = get_db()
     try:
         db["alerts"].update(alert_id, {"is_read": 1})
@@ -442,7 +443,7 @@ def get_latest_timestamp(symbol: str, table: str):
     except StopIteration:
         return None
 
-def fetch_history(symbol: str, table: str, start_str: str = None):
+def fetch_history(symbol: str, table: str, start_str: Optional[str] = None):
     db = get_db()
     if table not in db.table_names():
         return pd.DataFrame() # Return empty DF

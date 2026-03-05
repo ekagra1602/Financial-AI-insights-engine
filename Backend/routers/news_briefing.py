@@ -21,6 +21,7 @@ from services.ai100_client import summarize_only
 import pytz
 import json
 import hashlib
+from typing import Optional
 
 try:
     from services.email_service import send_notification_email
@@ -42,7 +43,7 @@ def _get_news_processor():
     return _news_processor
 
 
-def _generate_briefing_for_symbol(symbol: str) -> dict | None:
+def _generate_briefing_for_symbol(symbol: str) -> Optional[dict]:
     """
     Generate a single news briefing notification for a symbol.
     Returns the notification dict if created, or None if already exists / no articles.

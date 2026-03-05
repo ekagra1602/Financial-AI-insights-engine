@@ -10,6 +10,4 @@ supabase
 twelvedata
 pandas
 sqlite-utils
-sentence-transformers
-scikit-learn
 numpy

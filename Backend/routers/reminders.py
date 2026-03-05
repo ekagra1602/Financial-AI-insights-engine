@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 from services.reminder_parser import parse_reminder
 from services.finnhub_client import get_finnhub_quote
 
@@ -13,48 +14,48 @@ class ReminderRequest(BaseModel):
 
 
 class ParsedReminder(BaseModel):
-    ticker: str | None = None
-    company_name: str | None = None
-    action: str | None = None
+    ticker: Optional[str] = None
+    company_name: Optional[str] = None
+    action: Optional[str] = None
     condition_type: str = "custom"
-    target_price: float | None = None
-    percent_change: float | None = None
-    trigger_time: str | None = None
-    current_price: float | None = None
-    notes: str | None = None
+    target_price: Optional[float] = None
+    percent_change: Optional[float] = None
+    trigger_time: Optional[str] = None
+    current_price: Optional[float] = None
+    notes: Optional[str] = None
     source: str = "llm"
 
 
 class SaveReminderRequest(BaseModel):
     original_text: str
     ticker: str
-    company_name: str | None = None
+    company_name: Optional[str] = None
     action: str = "Review and take action"
     condition_type: str = "custom"
-    target_price: float | None = None
-    percent_change: float | None = None
-    trigger_time: str | None = None
-    custom_condition: str | None = None
-    current_price: float | None = None
-    notes: str | None = None
+    target_price: Optional[float] = None
+    percent_change: Optional[float] = None
+    trigger_time: Optional[str] = None
+    custom_condition: Optional[str] = None
+    current_price: Optional[float] = None
+    notes: Optional[str] = None
 
 
 class SavedReminder(BaseModel):
     id: str
     original_text: str
     ticker: str
-    company_name: str | None = None
+    company_name: Optional[str] = None
     action: str
     status: str
     condition_type: str
-    target_price: float | None = None
-    percent_change: float | None = None
-    trigger_time: str | None = None
-    custom_condition: str | None = None
+    target_price: Optional[float] = None
+    percent_change: Optional[float] = None
+    trigger_time: Optional[str] = None
+    custom_condition: Optional[str] = None
     created_at: str
-    triggered_at: str | None = None
-    current_price: float | None = None
-    notes: str | None = None
+    triggered_at: Optional[str] = None
+    current_price: Optional[float] = None
+    notes: Optional[str] = None
 
 
 class ReminderStatusUpdate(BaseModel):

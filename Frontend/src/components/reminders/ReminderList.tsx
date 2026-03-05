@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, TrendingUp, TrendingDown, Target, Bell, Trash2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Clock, TrendingUp, TrendingDown, Target, Bell, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { StockReminder, ReminderStatus } from '../../types';
 
 interface ReminderListProps {

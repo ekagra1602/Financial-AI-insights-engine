@@ -78,7 +78,7 @@ async def get_similar_news(
         # The RPC function sorts by similarity desc, so we still get best matches first
         similar_articles = news_processor.supabase.search_similar_articles(
             query_embedding=embedding, 
-            match_threshold=0.2, 
+            match_threshold=0.7, 
             match_count=limit + 1
         )
         
