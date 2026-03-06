@@ -8,7 +8,7 @@ AI100_BASE_URL = os.getenv("AI100_BASE_URL", "https://aisuite.cirrascale.com/api
 AI100_API_KEY = os.getenv("AI100_API_KEY")
 
 # Expected to be set in your .env, e.g. BAAI/bge-base-en-v1.5
-AI100_EMBEDDING_MODEL = os.getenv("AI100_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+AI100_EMBEDDING_MODEL = os.getenv("AI100_EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
 
 
 def get_embedding(text: str) -> list:

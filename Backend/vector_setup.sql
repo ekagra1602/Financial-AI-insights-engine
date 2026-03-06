@@ -1,14 +1,14 @@
 -- Enable the pgvector extension to work with embedding vectors
 create extension if not exists vector;
 
--- Add embedding column to news_articles table. 
--- Using 768 dimensions for BAAI/bge-base-en-v1.5 model.
-alter table news_articles add column if not exists embedding vector(768);
+-- Add embedding column to news_articles table.
+-- Using 1024 dimensions for BAAI/bge-large-en-v1.5 model.
+alter table news_articles add column if not exists embedding vector(1024);
 
 -- Create a function to search for similar articles
 -- This function will be called via RPC from the Supabase client
 create or replace function match_articles (
-  query_embedding vector(768),
+  query_embedding vector(1024),
   match_threshold float,
   match_count int
 )
