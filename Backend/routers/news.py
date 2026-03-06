@@ -57,28 +57,20 @@ async def get_similar_news(
         embedding = article.get("embedding")
         
         # If embedding is missing (old article), generate it on the fly
-        if not embedding or isinstance(embedding, str): 
-            # Check if it's a string (sometimes JSON decoding issue) or missing
-            # Ideally it's a list.
+        if not embedding or isinstance(embedding, str):
             from services.embeddings import get_embedding
             summary = article.get('summary', '')
             headline = article.get('headline', '')
-            ticker = article.get('ticker', '')
-            keywords = article.get('keywords', [])
-            kw_str = ' '.join(keywords) if isinstance(keywords, list) else ''
-            text_to_embed = f"{ticker} {headline} {summary} {kw_str}"
+            text_to_embed = f"{headline} {summary}"
             embedding = get_embedding(text_to_embed)
-            
+
             # Save it back to DB for future use
             news_processor.supabase.save_embedding(url_hash, embedding)
-            
-        # 2. Search for similar articles
-        # 2. Search for similar articles
-        # Lower threshold to 0.2 to ensure better recall on smaller datasets
-        # The RPC function sorts by similarity desc, so we still get best matches first
+
+        # Search for similar articles
         similar_articles = news_processor.supabase.search_similar_articles(
-            query_embedding=embedding, 
-            match_threshold=0.2, 
+            query_embedding=embedding,
+            match_threshold=0.5,
             match_count=limit + 1
         )
         

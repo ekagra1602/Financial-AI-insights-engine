@@ -4,7 +4,6 @@ import json
 import os
 import re
 from newspaper import Article
-from services.finnhub_client import get_company_news, get_finnhub_profile
 import nltk
 
 # Download necessary NLTK data
@@ -17,8 +16,6 @@ from services.ai100_client import analyze_text
 from services.embeddings import get_embedding
 from services.finnhub_client import get_company_news, get_market_news, get_finnhub_profile
 from services.supabase_client import SupabaseClient
-
-# ... (imports)
 
 class NewsProcessor:
     def __init__(self):
@@ -118,7 +115,11 @@ class NewsProcessor:
             # Fallback to Finnhub summary if scraping fails or returns empty
             if not content:
                 content = item.get('summary', '')
-            
+
+            if not content or not content.strip():
+                print(f"Skipping article (no content to analyze): {item.get('headline', url)}")
+                continue
+
             # Process with Qualcomm AI100
             ai_result = analyze_text(content)
             
@@ -135,28 +136,25 @@ class NewsProcessor:
             # Check Relevance (Post-processing)
             # If ticker is specified, we ONLY want to save/return if it's relevant.
             final_ticker = "Market"
-            is_relevant = True
             headline = item.get('headline', '')
             keywords = ai_result.get('keywords', [])
             company_name = ''
 
             if ticker:
-                final_ticker = ticker
                 company_name = self._get_company_name(ticker)
-                
+
                 if self._is_relevant(ticker, company_name, summary, keywords, headline):
                     final_ticker = ticker
                 else:
-                    is_relevant = False
-                    print(f"Skipping irrelevant article for {ticker}: {headline}. Storing as 'Market'.")
-                    final_ticker = "Market" # Still save it, but associated with general Market
+                    print(f"Skipping irrelevant article for {ticker}: {headline[:60]}")
+                    continue
             else:
                 final_ticker = "Market"
 
             # Generate vector embedding for similarity search
-            # Enrich with ticker, company name, and keywords so related entities
-            # (e.g. "Meta" and "Zuckerberg") cluster closer in vector space
-            text_to_embed = f"{final_ticker} {company_name} {headline} {summary} {' '.join(keywords)}"
+            # Embed topic only (no ticker/company) so pgvector finds
+            # topically similar articles across different companies
+            text_to_embed = f"{headline} {summary}"
             embedding = get_embedding(text_to_embed)
 
             article_data = {
@@ -176,9 +174,7 @@ class NewsProcessor:
             # Save to Supabase
             self.supabase.save_article(article_data)
 
-            # Only add to returned list if it was relevant to the requested ticker
-            if is_relevant:
-                processed_news.append(article_data)
+            processed_news.append(article_data)
             
         return processed_news
 
@@ -202,42 +198,40 @@ class NewsProcessor:
 
     def _is_relevant(self, ticker, company_name, summary, keywords, headline):
         """
-        Checks if the article is relevant to the ticker/company.
+        Checks if the article is primarily about the ticker/company.
+
+        Headline match is required as the primary signal — if the company
+        isn't in the headline, the article is likely not about them.
+        Keyword/summary matches alone are not enough because companies
+        get mentioned in passing in articles about other companies.
         """
         if not ticker or ticker == "Market":
             return True
-            
+
         ticker_upper = ticker.upper()
-        
+
         # Prepare search terms
         search_terms = {ticker_upper}
-        
+
         if company_name:
-            # Clean company name: Remove Inc, Corp, Ltd, etc.
-            import re
             clean_name = re.sub(r'(?i)\s+(inc\.?|corp\.?|co\.?|ltd\.?|plc|group|holdings|technologies|solutions)\b.*', '', company_name)
             clean_name = clean_name.strip()
-            if len(clean_name) > 2: # Avoid tiny names
+            if len(clean_name) > 2:
                 search_terms.add(clean_name.upper())
-        
-        # Check Keywords (Strong signal)
-        keyword_match = any(term in k.upper() for k in keywords for term in search_terms)
-        if keyword_match:
-            return True
-            
-        # Check Headline (Strong signal)
+
+        # Headline is the strongest signal — if the company is in the headline,
+        # the article is almost certainly about them
         headline_upper = headline.upper()
-        headline_match = any(term in headline_upper for term in search_terms)
-        if headline_match:
+        if any(term in headline_upper for term in search_terms):
             return True
-            
-        # Check Summary (Medium signal)
-        # We want strict matching in summary to avoid casual mentions.
-        # But for now, let's trust if it appears.
+
+        # If not in headline, require BOTH keyword AND summary mention
+        # to avoid false positives from passing mentions
+        keyword_match = any(term in k.upper() for k in keywords for term in search_terms)
         summary_upper = summary.upper()
         summary_match = any(term in summary_upper for term in search_terms)
-        
-        return summary_match
+
+        return keyword_match and summary_match
 
 
     def _hash_url(self, url: str) -> str:
