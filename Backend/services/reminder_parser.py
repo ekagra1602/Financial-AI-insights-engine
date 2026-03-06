@@ -16,6 +16,10 @@ def parse_reminder(text: str) -> dict:
         ticker, company_name, action, condition_type,
         target_price, percent_change, trigger_time, notes, _source
     """
+    fast_result = _fast_path_parse(text)
+    if fast_result is not None:
+        return fast_result
+
     if not is_api_configured():
         print("Warning: AI100 API not configured. Using regex fallback for reminder parsing.")
         return _regex_fallback(text)
@@ -48,7 +52,7 @@ Respond with ONLY the JSON object:"""
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.1,
-        max_tokens=1024,
+        max_tokens=220,
     )
 
     if result is None:
@@ -60,6 +64,18 @@ Respond with ONLY the JSON object:"""
 
     result["_source"] = "llm"
     return result
+
+
+def _fast_path_parse(text: str) -> dict | None:
+    """
+    Return immediately for straightforward reminders that regex can fully handle.
+    This avoids the slower LLM request for common price and percent alerts.
+    """
+    result = _regex_fallback(text)
+    if result.get("ticker") and result.get("condition_type") != "custom":
+        result["_source"] = "fast_regex"
+        return result
+    return None
 
 
 def _regex_fallback(text: str) -> dict:

@@ -47,7 +47,7 @@ const formatCondition = (reminder: StockReminder): string => {
     case 'price_below':
       return `Price drops below $${condition.targetPrice?.toFixed(2)}`;
     case 'percent_change':
-      return `${condition.percentChange! > 0 ? '+' : ''}${condition.percentChange?.toFixed(1)}% change`;
+      return `${condition.percentChange! > 0 ? '+' : ''}${condition.percentChange?.toFixed(1)}% change${condition.targetPrice ? ` (target: $${condition.targetPrice.toFixed(2)})` : ''}`;
     case 'time_based':
       return `At ${new Date(condition.triggerTime!).toLocaleString()}`;
     case 'custom':

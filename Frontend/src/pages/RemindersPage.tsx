@@ -84,7 +84,11 @@ function savedReminderToStockReminder(r: SavedReminderResponse): StockReminder {
       condition = { type: 'price_below', targetPrice: r.target_price ?? undefined };
       break;
     case 'percent_change':
-      condition = { type: 'percent_change', percentChange: r.percent_change ?? undefined };
+      condition = {
+        type: 'percent_change',
+        percentChange: r.percent_change ?? undefined,
+        targetPrice: r.target_price ?? undefined,
+      };
       break;
     case 'time_based':
       condition = { type: 'time_based', triggerTime: r.trigger_time ?? undefined };
@@ -141,45 +145,39 @@ export const RemindersPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
 
-  // Load reminders + alerts on mount, then poll alerts every 60s
-  useEffect(() => {
-    async function loadAll() {
+  const refreshData = async (withLoading = false) => {
+    if (withLoading) {
       setIsLoading(true);
-      try {
-        const [reminderRows, alertRows] = await Promise.all([
-          fetchReminders(),
-          fetchAlerts(),
-        ]);
-        const mappedReminders = reminderRows.map(savedReminderToStockReminder);
-        setReminders(mappedReminders);
-        setAlerts(alertRows.map(a => alertResponseToReminderAlert(a, mappedReminders)));
-      } catch (err) {
-        console.error('Failed to load data:', err);
+    }
+
+    try {
+      const [reminderRows, alertRows] = await Promise.all([
+        fetchReminders(),
+        fetchAlerts(),
+      ]);
+      const mappedReminders = reminderRows.map(savedReminderToStockReminder);
+      setReminders(mappedReminders);
+      setAlerts(alertRows.map(a => alertResponseToReminderAlert(a, mappedReminders)));
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      if (withLoading) {
         setShowToast('Could not load reminders from server.');
-      } finally {
+      }
+    } finally {
+      if (withLoading) {
         setIsLoading(false);
       }
     }
-    loadAll();
+  };
 
-    // Poll for new alerts every 60 seconds
+  // Load reminders + alerts on mount, then poll alerts every 60s
+  useEffect(() => {
+    refreshData(true);
+
+    // Poll for new alerts every 15 seconds
     const pollId = setInterval(async () => {
-      try {
-        const alertRows = await fetchAlerts();
-        setAlerts(prev => {
-          // Use functional update so we always have latest reminders in scope
-          return alertRows.map(a => {
-            const existing = prev.find(p => p.id === a.id);
-            return existing ?? alertResponseToReminderAlert(a, []);
-          });
-        });
-        // Also refresh reminder statuses (some may have been triggered)
-        const reminderRows = await fetchReminders();
-        setReminders(reminderRows.map(savedReminderToStockReminder));
-      } catch (err) {
-        console.error('Poll error:', err);
-      }
-    }, 60_000);
+      await refreshData();
+    }, 15_000);
 
     return () => clearInterval(pollId);
   }, []);
@@ -196,11 +194,23 @@ export const RemindersPage: React.FC = () => {
     setIsProcessing(true);
 
     let parsed: ParsedReminderResponse;
-    try {
-      parsed = await apiParseReminder(text);
-    } catch {
-      console.warn('Backend unavailable, using client-side parser.');
-      parsed = localParse(text);
+    const fastLocalParsed = localParse(text);
+    const useFastLocalParse =
+      Boolean(fastLocalParsed.ticker) &&
+      ['price_above', 'price_below'].includes(fastLocalParsed.condition_type);
+
+    if (useFastLocalParse) {
+      parsed = {
+        ...fastLocalParsed,
+        source: 'fast_local',
+      };
+    } else {
+      try {
+        parsed = await apiParseReminder(text);
+      } catch {
+        console.warn('Backend unavailable, using client-side parser.');
+        parsed = localParse(text);
+      }
     }
 
     if (parsed.ticker) {
@@ -225,8 +235,13 @@ export const RemindersPage: React.FC = () => {
         const priceStr = saved.current_price ? ` (live: $${saved.current_price.toFixed(2)})` : '';
         const sourceLabel =
           parsed.source === 'llm' ? 'AI' :
+          parsed.source === 'fast_local' ? 'fast local parser' :
+          parsed.source === 'fast_regex' ? 'fast server parser' :
           parsed.source === 'regex_fallback' ? 'server fallback' : 'local';
         setShowToast(`Reminder created for ${saved.ticker}${priceStr} — parsed via ${sourceLabel}`);
+        window.setTimeout(() => {
+          refreshData();
+        }, 1500);
       } catch (err) {
         console.error('Failed to save reminder:', err);
         setShowToast('Parsed reminder but could not save it. Try again.');

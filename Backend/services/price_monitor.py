@@ -26,9 +26,12 @@ def _check_condition(reminder: dict, current_price: float) -> bool:
     if ct == "price_below" and target is not None:
         return current_price <= target
 
-    if ct == "percent_change" and pct is not None and base and base > 0:
-        actual_pct = (current_price - base) / base * 100
-        return actual_pct >= pct if pct > 0 else actual_pct <= pct
+    if ct == "percent_change" and pct is not None:
+        if target is not None:
+            return current_price >= target if pct > 0 else current_price <= target
+        if base and base > 0:
+            actual_pct = (current_price - base) / base * 100
+            return actual_pct >= pct if pct > 0 else actual_pct <= pct
 
     if ct == "time_based" and trig_t:
         try:
@@ -57,8 +60,12 @@ def _build_message(reminder: dict, current_price: float) -> str:
     if ct == "percent_change":
         pct = reminder["percent_change"]
         direction = "gained" if pct > 0 else "dropped"
+        target_text = (
+            f" Target price: ${reminder['target_price']:.2f}."
+            if reminder.get("target_price") is not None else ""
+        )
         return (
-            f"{ticker} has {direction} {abs(pct):.1f}%. "
+            f"{ticker} has {direction} {abs(pct):.1f}%.{target_text} "
             f"Current price: ${current_price:.2f}. Action: {action}"
         )
     if ct == "time_based":
