@@ -141,7 +141,8 @@ export const parseReminderText = async (text: string): Promise<ParsedReminderRes
       body: JSON.stringify({ text }),
     });
     if (!response.ok) {
-      throw new Error('Failed to parse reminder');
+      const detail = await response.text();
+      throw new Error(`Failed to parse reminder: ${detail}`);
     }
     return await response.json();
   } catch (error) {

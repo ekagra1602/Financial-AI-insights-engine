@@ -20,6 +20,7 @@ import {
 // ── Company name lookup (fallback when backend doesn't return one) ────────────
 const COMPANY_NAMES: Record<string, string> = {
   AAPL: 'Apple Inc.',
+  ABNB: 'Airbnb, Inc.',
   NVDA: 'NVIDIA Corporation',
   TSLA: 'Tesla, Inc.',
   MSFT: 'Microsoft Corporation',
@@ -30,15 +31,102 @@ const COMPANY_NAMES: Record<string, string> = {
   AMD: 'Advanced Micro Devices, Inc.',
   INTC: 'Intel Corporation',
 };
+const COMPANY_TO_TICKER: Record<string, string> = {
+  apple: 'AAPL',
+  airbnb: 'ABNB',
+  microsoft: 'MSFT',
+  nvidia: 'NVDA',
+  tesla: 'TSLA',
+  amazon: 'AMZN',
+  alphabet: 'GOOGL',
+  google: 'GOOGL',
+  meta: 'META',
+  qualcomm: 'QCOM',
+  amd: 'AMD',
+  intel: 'INTC',
+};
+const TICKER_STOPWORDS = new Set([
+  'a', 'an', 'and', 'at', 'below', 'buy', 'current', 'drop', 'drops', 'fall', 'falls',
+  'for', 'from', 'gain', 'gains', 'go', 'goes', 'if', 'it', 'me', 'my', 'of',
+  'on', 'or', 'price', 'review', 'sell', 'so', 'the', 'to', 'under', 'up', 'when',
+]);
+
+function extractTicker(text: string): string | null {
+  const lowered = text.toLowerCase();
+
+  for (const [companyName, ticker] of Object.entries(COMPANY_TO_TICKER)) {
+    const regex = new RegExp(`\\b${companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (regex.test(lowered)) {
+      return ticker;
+    }
+  }
+
+  const candidates = text.match(/\b([A-Za-z]{1,5})\b/g) ?? [];
+  for (const candidate of candidates) {
+    if (TICKER_STOPWORDS.has(candidate.toLowerCase())) {
+      continue;
+    }
+    return candidate.toUpperCase();
+  }
+
+  return null;
+}
+
+function addMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  const targetMonth = result.getMonth() + months;
+  result.setMonth(targetMonth);
+  while (result.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+    result.setDate(result.getDate() - 1);
+  }
+  return result;
+}
+
+function parseRelativeTime(text: string): string | null {
+  const now = new Date();
+  const relativeMatch = text.match(/\b(?:in\s+)?(\d+)\s+(minute|minutes|hour|hours|day|days|week|weeks|month|months)\b/i);
+
+  if (relativeMatch) {
+    const amount = parseInt(relativeMatch[1], 10);
+    const unit = relativeMatch[2].toLowerCase();
+    const triggerDate = new Date(now);
+
+    if (unit.startsWith('minute')) triggerDate.setMinutes(triggerDate.getMinutes() + amount);
+    else if (unit.startsWith('hour')) triggerDate.setHours(triggerDate.getHours() + amount);
+    else if (unit.startsWith('day')) triggerDate.setDate(triggerDate.getDate() + amount);
+    else if (unit.startsWith('week')) triggerDate.setDate(triggerDate.getDate() + amount * 7);
+    else if (unit.startsWith('month')) return addMonths(now, amount).toISOString();
+
+    return triggerDate.toISOString();
+  }
+
+  if (/\btomorrow\b/i.test(text)) {
+    const triggerDate = new Date(now);
+    triggerDate.setDate(triggerDate.getDate() + 1);
+    return triggerDate.toISOString();
+  }
+
+  if (/\bnext week\b/i.test(text)) {
+    const triggerDate = new Date(now);
+    triggerDate.setDate(triggerDate.getDate() + 7);
+    return triggerDate.toISOString();
+  }
+
+  if (/\bnext month\b/i.test(text)) {
+    return addMonths(now, 1).toISOString();
+  }
+
+  return null;
+}
 
 // ── Client-side regex parser (fallback when backend is unreachable) ──────────
 function localParse(text: string): ParsedReminderResponse {
-  const tickerMatch = text.match(/\b([A-Z]{1,5})\b/);
   const aboveMatch = text.match(/(?:above|over|reaches?|hits?)\s*\$?(\d+(?:\.\d{2})?)/i);
   const belowMatch = text.match(/(?:below|under|drops?\s*(?:to)?)\s*\$?(\d+(?:\.\d{2})?)/i);
   const pctMatch = text.match(/(\d+(?:\.\d+)?)\s*%/i);
+  const triggerTime = parseRelativeTime(text);
 
-  const ticker = tickerMatch ? tickerMatch[1] : null;
+  const ticker = extractTicker(text);
   let condition_type: ParsedReminderResponse['condition_type'] = 'custom';
   let target_price: number | null = null;
   let percent_change: number | null = null;
@@ -57,6 +145,8 @@ function localParse(text: string): ParsedReminderResponse {
     const val = parseFloat(pctMatch[1]);
     const neg = /drop|fall|down|lose/i.test(text);
     percent_change = neg ? -val : val;
+  } else if (triggerTime) {
+    condition_type = 'time_based';
   }
 
   return {
@@ -66,7 +156,7 @@ function localParse(text: string): ParsedReminderResponse {
     condition_type,
     target_price,
     percent_change,
-    trigger_time: null,
+    trigger_time: triggerTime,
     current_price: null,
     notes: text,
     source: 'client_regex',
@@ -194,29 +284,23 @@ export const RemindersPage: React.FC = () => {
     setIsProcessing(true);
 
     let parsed: ParsedReminderResponse;
-    const fastLocalParsed = localParse(text);
-    const useFastLocalParse =
-      Boolean(fastLocalParsed.ticker) &&
-      ['price_above', 'price_below'].includes(fastLocalParsed.condition_type);
-
-    if (useFastLocalParse) {
-      parsed = {
-        ...fastLocalParsed,
-        source: 'fast_local',
-      };
-    } else {
-      try {
-        parsed = await apiParseReminder(text);
-      } catch {
-        console.warn('Backend unavailable, using client-side parser.');
-        parsed = localParse(text);
+    try {
+      parsed = await apiParseReminder(text);
+    } catch (err) {
+      if (!(err instanceof TypeError)) {
+        console.error('AI reminder parsing failed:', err);
+        setShowToast('AI could not parse that reminder. Try rephrasing it with a ticker or company name.');
+        setIsProcessing(false);
+        return;
       }
+      console.warn('Backend unavailable, using client-side parser.');
+      parsed = localParse(text);
     }
 
-    if (parsed.ticker) {
+    if (parsed.ticker || parsed.condition_type === 'time_based') {
       const payload: SaveReminderPayload = {
         original_text:    text,
-        ticker:           parsed.ticker,
+        ticker:           parsed.ticker ?? '',
         company_name:     parsed.company_name,
         action:           parsed.action || 'Review and take action',
         condition_type:   parsed.condition_type,
@@ -233,12 +317,11 @@ export const RemindersPage: React.FC = () => {
         setReminders(prev => [savedReminderToStockReminder(saved), ...prev]);
 
         const priceStr = saved.current_price ? ` (live: $${saved.current_price.toFixed(2)})` : '';
+        const reminderLabel = saved.ticker || saved.company_name || 'reminder';
         const sourceLabel =
           parsed.source === 'llm' ? 'AI' :
-          parsed.source === 'fast_local' ? 'fast local parser' :
-          parsed.source === 'fast_regex' ? 'fast server parser' :
           parsed.source === 'regex_fallback' ? 'server fallback' : 'local';
-        setShowToast(`Reminder created for ${saved.ticker}${priceStr} — parsed via ${sourceLabel}`);
+        setShowToast(`Reminder created for ${reminderLabel}${priceStr} — parsed via ${sourceLabel}`);
         window.setTimeout(() => {
           refreshData();
         }, 1500);

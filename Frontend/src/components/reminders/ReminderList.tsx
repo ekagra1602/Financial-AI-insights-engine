@@ -131,6 +131,8 @@ interface ReminderCardProps {
 }
 
 const ReminderCard: React.FC<ReminderCardProps> = ({ reminder, onDelete, onCancel }) => {
+  const title = reminder.ticker || 'REMINDER';
+
   return (
     <div className="px-6 py-4 hover:bg-background/50 transition-colors">
       <div className="flex items-start justify-between gap-4">
@@ -140,7 +142,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ reminder, onDelete, onCance
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-semibold text-primary">{reminder.ticker}</span>
+              <span className="font-semibold text-primary">{title}</span>
               {reminder.companyName && (
                 <span className="text-sm text-text-secondary">{reminder.companyName}</span>
               )}
