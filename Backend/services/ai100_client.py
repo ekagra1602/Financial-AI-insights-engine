@@ -10,7 +10,7 @@ AI100_BASE_URL = os.getenv("AI100_BASE_URL", "https://aisuite.cirrascale.com/api
 AI100_API_KEY = os.getenv("AI100_API_KEY")
 
 # Default model to use (can be configured)
-AI100_MODEL = os.getenv("AI100_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+AI100_MODEL = os.getenv("AI100_MODEL", "DeepSeek-R1-Distill-Llama-70B")
 
 # Maximum retries for JSON parsing failures
 MAX_RETRIES = 2

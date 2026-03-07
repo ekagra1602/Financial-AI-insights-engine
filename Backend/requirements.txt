@@ -9,6 +9,8 @@ lxml_html_clean
 supabase
 twelvedata
 pandas
+pytz
+resend
 sqlite-utils
 sentence-transformers
 scikit-learn
