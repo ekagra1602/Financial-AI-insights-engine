@@ -30,16 +30,12 @@ def parse_reminder(text: str) -> dict:
     Uses the shared AI100 LLM client to extract structured intent from
     a plain-English stock reminder.
 
-    Falls back to regex-based parsing if the API key is missing or the
-    LLM call fails.
-
     Returns a dict with:
         ticker, company_name, action, condition_type,
         target_price, percent_change, trigger_time, notes, _source
     """
     if not is_api_configured():
-        print("Warning: AI100 API not configured. Using regex fallback for reminder parsing.")
-        return _regex_fallback(text)
+        raise ValueError("AI100 API not configured")
 
     system_prompt = (
         "You are a financial assistant that extracts structure from stock reminders. "
