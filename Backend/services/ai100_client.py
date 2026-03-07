@@ -10,7 +10,7 @@ AI100_BASE_URL = os.getenv("AI100_BASE_URL", "https://aisuite.cirrascale.com/api
 AI100_API_KEY = os.getenv("AI100_API_KEY")
 
 # Default model to use (can be configured)
-AI100_MODEL = os.getenv("AI100_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+AI100_MODEL = os.getenv("AI100_MODEL", "DeepSeek-R1-Distill-Llama-70B")
 
 # Maximum retries for JSON parsing failures
 MAX_RETRIES = 2
@@ -80,6 +80,62 @@ def chat_completion(
     except json.JSONDecodeError as e:
         print(f"[AI100] JSON parse error: {e}")
         return None
+    except Exception as e:
+        print(f"[AI100] Error: {e}")
+        return None
+
+
+def chat_completion_raw(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float = 0.3,
+    max_tokens: int = 500,
+) -> Optional[str]:
+    """
+    Same API call as chat_completion, but returns raw text content instead of
+    forcing JSON parsing. Useful for prompts that ask for strict labeled text.
+    """
+    if not AI100_API_KEY:
+        return None
+
+    url = f"{AI100_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {AI100_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": AI100_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "tool_choice": "none",
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        if response.status_code != 200:
+            print(f"[AI100] Error {response.status_code}: {response.text[:500]}")
+            return None
+
+        data = response.json()
+        message = data["choices"][0]["message"]
+        content = (message.get("content") or "").strip()
+
+        if not content and "tool_calls" in message:
+            try:
+                return message["tool_calls"][0]["function"].get("arguments", "").strip() or None
+            except (KeyError, IndexError):
+                return None
+
+        if not content:
+            return None
+
+        cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        cleaned = re.sub(r"```(?:json)?\s*|\s*```", "", cleaned).strip()
+        return cleaned or None
     except Exception as e:
         print(f"[AI100] Error: {e}")
         return None

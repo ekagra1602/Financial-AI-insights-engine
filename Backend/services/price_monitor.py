@@ -26,9 +26,12 @@ def _check_condition(reminder: dict, current_price: float) -> bool:
     if ct == "price_below" and target is not None:
         return current_price <= target
 
-    if ct == "percent_change" and pct is not None and base and base > 0:
-        actual_pct = (current_price - base) / base * 100
-        return actual_pct >= pct if pct > 0 else actual_pct <= pct
+    if ct == "percent_change" and pct is not None:
+        if target is not None:
+            return current_price >= target if pct > 0 else current_price <= target
+        if base and base > 0:
+            actual_pct = (current_price - base) / base * 100
+            return actual_pct >= pct if pct > 0 else actual_pct <= pct
 
     if ct == "time_based" and trig_t:
         try:
@@ -57,12 +60,18 @@ def _build_message(reminder: dict, current_price: float) -> str:
     if ct == "percent_change":
         pct = reminder["percent_change"]
         direction = "gained" if pct > 0 else "dropped"
+        target_text = (
+            f" Target price: ${reminder['target_price']:.2f}."
+            if reminder.get("target_price") is not None else ""
+        )
         return (
-            f"{ticker} has {direction} {abs(pct):.1f}%. "
+            f"{ticker} has {direction} {abs(pct):.1f}%.{target_text} "
             f"Current price: ${current_price:.2f}. Action: {action}"
         )
     if ct == "time_based":
-        return f"Time-based reminder for {ticker} triggered. Action: {action}"
+        if ticker:
+            return f"Time-based reminder for {ticker} triggered. Action: {action}"
+        return f"Time-based reminder triggered. Action: {action}"
 
     return f"Reminder for {ticker} triggered. Current price: ${current_price:.2f}. Action: {action}"
 
@@ -75,6 +84,17 @@ async def check_single_reminder(reminder: dict):
     from database import update_reminder_status, create_alert
     from services.finnhub_client import get_finnhub_quote
     from services.email_service import send_alert_email
+
+    if reminder["condition_type"] == "time_based":
+        if _check_condition(reminder, 0):
+            update_reminder_status(reminder["id"], "triggered")
+            create_alert({
+                "reminder_id": reminder["id"],
+                "ticker":      reminder["ticker"] or "REMINDER",
+                "message":     _build_message(reminder, 0),
+            })
+            print(f"[Monitor] Instant trigger — time-based reminder reached {reminder['trigger_time']}")
+        return
 
     try:
         quote = get_finnhub_quote(reminder["ticker"])
@@ -107,8 +127,11 @@ async def run_check():
     if not active:
         return
 
+    timed = [r for r in active if r["condition_type"] == "time_based"]
+    market_based = [r for r in active if r["condition_type"] != "time_based"]
+
     # Fetch prices once per unique ticker to stay within Finnhub rate limits
-    tickers = list({r["ticker"] for r in active})
+    tickers = list({r["ticker"] for r in market_based if r["ticker"]})
     prices: dict[str, float] = {}
 
     for ticker in tickers:
@@ -122,7 +145,21 @@ async def run_check():
         await asyncio.sleep(0.2)   # ~5 req/s stays well under free-tier limits
 
     triggered_count = 0
-    for reminder in active:
+    for reminder in timed:
+        if _check_condition(reminder, 0):
+            update_reminder_status(reminder["id"], "triggered")
+            create_alert({
+                "reminder_id": reminder["id"],
+                "ticker":      reminder["ticker"] or "REMINDER",
+                "message":     _build_message(reminder, 0),
+            })
+            triggered_count += 1
+            print(
+                f"[Monitor] TRIGGERED — time reminder "
+                f"(trigger_time: {reminder['trigger_time']})"
+            )
+
+    for reminder in market_based:
         price = prices.get(reminder["ticker"])
         if price is None:
             continue

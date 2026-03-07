@@ -7,6 +7,12 @@ from services.finnhub_client import get_finnhub_quote
 router = APIRouter()
 
 
+def _derive_target_price(current_price: float | None, percent_change: float | None) -> float | None:
+    if current_price is None or percent_change is None:
+        return None
+    return round(current_price * (1 + (percent_change / 100)), 2)
+
+
 # ── Pydantic models ───────────────────────────────────────────────────────────
 
 class ReminderRequest(BaseModel):
@@ -88,21 +94,30 @@ async def parse_reminder_text(request: ReminderRequest):
 
         ticker = parsed.get("ticker")
         current_price = None
-        source = "llm" if parsed.get("_source") != "fallback_regex" else "regex_fallback"
+        source_map = {
+            "llm": "llm",
+            "fast_regex": "fast_regex",
+            "fallback_regex": "regex_fallback",
+        }
+        source = source_map.get(parsed.get("_source"), "llm")
 
-        if ticker:
+        if ticker and parsed.get("condition_type") == "percent_change":
             try:
                 quote = get_finnhub_quote(ticker)
                 current_price = quote.get("c")
             except Exception as e:
                 print(f"Could not fetch price for {ticker}: {e}")
 
+        target_price = parsed.get("target_price")
+        if parsed.get("condition_type") == "percent_change":
+            target_price = _derive_target_price(current_price, parsed.get("percent_change"))
+
         return ParsedReminder(
             ticker=ticker,
             company_name=parsed.get("company_name"),
             action=parsed.get("action"),
             condition_type=parsed.get("condition_type", "custom"),
-            target_price=parsed.get("target_price"),
+            target_price=target_price,
             percent_change=parsed.get("percent_change"),
             trigger_time=parsed.get("trigger_time"),
             current_price=current_price,
@@ -122,7 +137,13 @@ async def save_reminder(request: SaveReminderRequest):
     import asyncio
     from database import create_reminder
     from services.price_monitor import check_single_reminder
-    row = create_reminder(request.model_dump())
+    payload = request.model_dump()
+    if payload.get("condition_type") == "percent_change" and payload.get("target_price") is None:
+        payload["target_price"] = _derive_target_price(
+            payload.get("current_price"),
+            payload.get("percent_change"),
+        )
+    row = create_reminder(payload)
     # Fire-and-forget: check condition instantly without blocking the response
     asyncio.create_task(check_single_reminder(row))
     return SavedReminder(**row)

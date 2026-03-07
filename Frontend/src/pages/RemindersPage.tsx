@@ -17,62 +17,6 @@ import {
   AlertResponse,
 } from '../services/api';
 
-// ── Company name lookup (fallback when backend doesn't return one) ────────────
-const COMPANY_NAMES: Record<string, string> = {
-  AAPL: 'Apple Inc.',
-  NVDA: 'NVIDIA Corporation',
-  TSLA: 'Tesla, Inc.',
-  MSFT: 'Microsoft Corporation',
-  GOOGL: 'Alphabet Inc.',
-  AMZN: 'Amazon.com, Inc.',
-  META: 'Meta Platforms, Inc.',
-  QCOM: 'Qualcomm Incorporated',
-  AMD: 'Advanced Micro Devices, Inc.',
-  INTC: 'Intel Corporation',
-};
-
-// ── Client-side regex parser (fallback when backend is unreachable) ──────────
-function localParse(text: string): ParsedReminderResponse {
-  const tickerMatch = text.match(/\b([A-Z]{1,5})\b/);
-  const aboveMatch = text.match(/(?:above|over|reaches?|hits?)\s*\$?(\d+(?:\.\d{2})?)/i);
-  const belowMatch = text.match(/(?:below|under|drops?\s*(?:to)?)\s*\$?(\d+(?:\.\d{2})?)/i);
-  const pctMatch = text.match(/(\d+(?:\.\d+)?)\s*%/i);
-
-  const ticker = tickerMatch ? tickerMatch[1] : null;
-  let condition_type: ParsedReminderResponse['condition_type'] = 'custom';
-  let target_price: number | null = null;
-  let percent_change: number | null = null;
-  let action = 'Review and take action';
-
-  if (aboveMatch) {
-    condition_type = 'price_above';
-    target_price = parseFloat(aboveMatch[1]);
-    if (text.toLowerCase().includes('sell')) action = 'Consider selling';
-  } else if (belowMatch) {
-    condition_type = 'price_below';
-    target_price = parseFloat(belowMatch[1]);
-    if (text.toLowerCase().includes('buy')) action = 'Consider buying';
-  } else if (pctMatch) {
-    condition_type = 'percent_change';
-    const val = parseFloat(pctMatch[1]);
-    const neg = /drop|fall|down|lose/i.test(text);
-    percent_change = neg ? -val : val;
-  }
-
-  return {
-    ticker,
-    company_name: ticker ? (COMPANY_NAMES[ticker] ?? null) : null,
-    action,
-    condition_type,
-    target_price,
-    percent_change,
-    trigger_time: null,
-    current_price: null,
-    notes: text,
-    source: 'client_regex',
-  };
-}
-
 // ── Mapper: flat DB row → nested StockReminder ────────────────────────────────
 function savedReminderToStockReminder(r: SavedReminderResponse): StockReminder {
   let condition: ReminderCondition;
@@ -84,7 +28,11 @@ function savedReminderToStockReminder(r: SavedReminderResponse): StockReminder {
       condition = { type: 'price_below', targetPrice: r.target_price ?? undefined };
       break;
     case 'percent_change':
-      condition = { type: 'percent_change', percentChange: r.percent_change ?? undefined };
+      condition = {
+        type: 'percent_change',
+        percentChange: r.percent_change ?? undefined,
+        targetPrice: r.target_price ?? undefined,
+      };
       break;
     case 'time_based':
       condition = { type: 'time_based', triggerTime: r.trigger_time ?? undefined };
@@ -141,45 +89,39 @@ export const RemindersPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
 
-  // Load reminders + alerts on mount, then poll alerts every 60s
-  useEffect(() => {
-    async function loadAll() {
+  const refreshData = async (withLoading = false) => {
+    if (withLoading) {
       setIsLoading(true);
-      try {
-        const [reminderRows, alertRows] = await Promise.all([
-          fetchReminders(),
-          fetchAlerts(),
-        ]);
-        const mappedReminders = reminderRows.map(savedReminderToStockReminder);
-        setReminders(mappedReminders);
-        setAlerts(alertRows.map(a => alertResponseToReminderAlert(a, mappedReminders)));
-      } catch (err) {
-        console.error('Failed to load data:', err);
+    }
+
+    try {
+      const [reminderRows, alertRows] = await Promise.all([
+        fetchReminders(),
+        fetchAlerts(),
+      ]);
+      const mappedReminders = reminderRows.map(savedReminderToStockReminder);
+      setReminders(mappedReminders);
+      setAlerts(alertRows.map(a => alertResponseToReminderAlert(a, mappedReminders)));
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      if (withLoading) {
         setShowToast('Could not load reminders from server.');
-      } finally {
+      }
+    } finally {
+      if (withLoading) {
         setIsLoading(false);
       }
     }
-    loadAll();
+  };
 
-    // Poll for new alerts every 60 seconds
+  // Load reminders + alerts on mount, then poll alerts every 60s
+  useEffect(() => {
+    refreshData(true);
+
+    // Poll for new alerts every 15 seconds
     const pollId = setInterval(async () => {
-      try {
-        const alertRows = await fetchAlerts();
-        setAlerts(prev => {
-          // Use functional update so we always have latest reminders in scope
-          return alertRows.map(a => {
-            const existing = prev.find(p => p.id === a.id);
-            return existing ?? alertResponseToReminderAlert(a, []);
-          });
-        });
-        // Also refresh reminder statuses (some may have been triggered)
-        const reminderRows = await fetchReminders();
-        setReminders(reminderRows.map(savedReminderToStockReminder));
-      } catch (err) {
-        console.error('Poll error:', err);
-      }
-    }, 60_000);
+      await refreshData();
+    }, 15_000);
 
     return () => clearInterval(pollId);
   }, []);
@@ -198,15 +140,17 @@ export const RemindersPage: React.FC = () => {
     let parsed: ParsedReminderResponse;
     try {
       parsed = await apiParseReminder(text);
-    } catch {
-      console.warn('Backend unavailable, using client-side parser.');
-      parsed = localParse(text);
+    } catch (err) {
+      console.error('AI reminder parsing failed:', err);
+      setShowToast('AI could not parse that reminder. Try rephrasing it with a ticker or company name.');
+      setIsProcessing(false);
+      return;
     }
 
-    if (parsed.ticker) {
+    if (parsed.ticker || parsed.condition_type === 'time_based') {
       const payload: SaveReminderPayload = {
         original_text:    text,
-        ticker:           parsed.ticker,
+        ticker:           parsed.ticker ?? '',
         company_name:     parsed.company_name,
         action:           parsed.action || 'Review and take action',
         condition_type:   parsed.condition_type,
@@ -223,10 +167,14 @@ export const RemindersPage: React.FC = () => {
         setReminders(prev => [savedReminderToStockReminder(saved), ...prev]);
 
         const priceStr = saved.current_price ? ` (live: $${saved.current_price.toFixed(2)})` : '';
+        const reminderLabel = saved.ticker || saved.company_name || 'reminder';
         const sourceLabel =
           parsed.source === 'llm' ? 'AI' :
           parsed.source === 'regex_fallback' ? 'server fallback' : 'local';
-        setShowToast(`Reminder created for ${saved.ticker}${priceStr} — parsed via ${sourceLabel}`);
+        setShowToast(`Reminder created for ${reminderLabel}${priceStr} — parsed via ${sourceLabel}`);
+        window.setTimeout(() => {
+          refreshData();
+        }, 1500);
       } catch (err) {
         console.error('Failed to save reminder:', err);
         setShowToast('Parsed reminder but could not save it. Try again.');
