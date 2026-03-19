@@ -22,6 +22,8 @@ def is_market_open() -> bool:
     market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
     return market_open <= now_et <= market_close
 
+_last_failed_attempt = {}
+
 
 class DataManager:
     def __init__(self):
@@ -41,6 +43,12 @@ class DataManager:
         table_name = "bars_1m" if timeframe == "1min" else ("bars_1h" if timeframe == "1h" else "bars_1d")
         interval = "1min" if timeframe == "1min" else ("1h" if timeframe == "1h" else "1day")
         
+        # 0. Check if we recently failed due to rate limit
+        last_fail = _last_failed_attempt.get((symbol, interval))
+        if last_fail and (datetime.now() - last_fail).total_seconds() < 60:
+             print(f"  [SKIPPED] Fetch for {symbol} skipped due to recent API limit failure.")
+             return fetch_history(symbol, table_name)
+
         # 1. Check local DB for latest data
         latest_ts = get_latest_timestamp(symbol, table_name)
         
@@ -67,9 +75,9 @@ class DataManager:
             now_et = datetime.now(ET)
             
             if is_market_open():
-                # Market OPEN: Check 2-min staleness
+                # Market OPEN: Check 5-min staleness
                 diff_seconds = (now_et - last_dt).total_seconds()
-                if diff_seconds > 120:
+                if diff_seconds > 300:
                     fetch_needed = True
                     start_date = latest_ts # Increment logic handled by API start_date usually inclusive? 
                     # TwelveData start_date is inclusive. We can just ask for latest.
@@ -125,8 +133,14 @@ class DataManager:
                         save_bars_1h(symbol, df)
                      else:
                         save_bars_1d(symbol, df)
+                     
+                     # Clear failure status on success
+                     if (symbol, interval) in _last_failed_attempt:
+                         del _last_failed_attempt[(symbol, interval)]
             except Exception as e:
                 print(f"Error fetching data: {e}")
+                if "API credits" in str(e):
+                    _last_failed_attempt[(symbol, interval)] = datetime.now()
         
         return fetch_history(symbol, table_name)
 
