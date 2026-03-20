@@ -17,7 +17,7 @@ def on_startup():
 @app.on_event("startup")
 async def start_price_monitor():
     # Set to True to enable background price monitoring (uses Finnhub API credits)
-    ENABLE_PRICE_MONITOR = True
+    ENABLE_PRICE_MONITOR = False
     if not ENABLE_PRICE_MONITOR:
         print("[Monitor] Price monitor disabled. Set ENABLE_PRICE_MONITOR=True in main.py to activate.")
         return
