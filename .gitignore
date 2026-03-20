@@ -1,6 +1,7 @@
 Backend/stock_data.db
 Backend/stock_data.db-shm
 Backend/stock_data.db-wal
+Backend/db_backups/
 
 StockGraph/*
 
