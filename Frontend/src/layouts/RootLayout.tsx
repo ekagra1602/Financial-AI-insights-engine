@@ -28,7 +28,7 @@ const AppShell: React.FC = () => {
       {/* Blurred backdrop — covers everything below the header when panel is open */}
       {isPanelOpen && (
         <div
-          className="fixed inset-0 top-[52px] md:top-[64px] z-40 bg-black/40 backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 top-[64px] z-40 bg-black/40 backdrop-blur-sm transition-opacity"
           onClick={togglePanel}
           aria-label="Close notification panel"
         />
@@ -41,8 +41,8 @@ const AppShell: React.FC = () => {
         </div>
       )}
 
-      {/* Main content area — pb-16 for mobile bottom nav bar */}
-      <main className="pb-16 md:pb-0">
+      {/* Main content area */}
+      <main>
         <Outlet />
       </main>
     </div>

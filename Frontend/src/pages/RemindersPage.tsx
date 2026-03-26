@@ -243,7 +243,7 @@ export const RemindersPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-[1400px] mx-auto px-3 py-4 md:px-6 md:py-8">
+    <div className="max-w-[1400px] mx-auto px-6 py-8">
       {/* Toast Notification */}
       {showToast && (
         <div className="fixed top-20 right-6 z-50 bg-surface border border-border rounded-lg px-4 py-3 shadow-lg animate-pulse">
@@ -266,7 +266,7 @@ export const RemindersPage: React.FC = () => {
         </div>
 
         {/* Feature Pills */}
-        <div className="flex flex-nowrap overflow-x-auto no-scrollbar gap-3 mt-4 pb-1">
+        <div className="flex flex-wrap gap-3 mt-4">
           <div className="flex items-center gap-2 bg-surface border border-border rounded-full px-4 py-2">
             <Zap className="w-4 h-4 text-primary" />
             <span className="text-sm text-text-secondary">AI-Powered Parsing</span>

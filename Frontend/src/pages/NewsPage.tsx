@@ -369,7 +369,7 @@ export const NewsPage: React.FC = () => {
   }, [watchlistLoaded]);
 
   return (
-    <div className="max-w-7xl mx-auto px-3 py-4 md:px-4 md:py-6">
+    <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Main Content - News Feed */}
         <div className="lg:w-3/4 space-y-4">
@@ -479,160 +479,10 @@ export const NewsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Sidebar - Filters (desktop: inline, mobile: overlay) */}
-
-        {/* Mobile filter overlay */}
-        {isFilterOpen && (
-          <div className="lg:hidden fixed inset-0 z-50">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsFilterOpen(false)} />
-            <div className="absolute bottom-0 left-0 right-0 max-h-[75vh] bg-surface rounded-t-2xl shadow-xl border-t border-border overflow-hidden flex flex-col safe-area-bottom">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                <h3 className="text-lg font-semibold text-text-primary">
-                  Filter Companies
-                </h3>
-                <button
-                  onClick={() => setIsFilterOpen(false)}
-                  className="p-1.5 rounded-lg hover:bg-surface-light text-text-secondary"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="overflow-y-auto flex-1 p-4">
-                <div className="flex justify-between mb-4">
-                  <button
-                    onClick={selectAllTickers}
-                    className="text-xs text-primary hover:text-primary/90"
-                  >
-                    Select All
-                  </button>
-                  <button
-                    onClick={clearTickerSelections}
-                    className="text-xs text-text-secondary hover:text-text-primary"
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                <div className="space-y-1">
-                  {allCompanies.map((company) => (
-                    <label
-                      key={company.symbol}
-                      className="flex items-center justify-between p-2.5 rounded-md cursor-pointer transition-colors hover:bg-surface-light"
-                    >
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
-                          checked={selectedTickers.includes(company.symbol)}
-                          onChange={() => toggleTickerSelection(company.symbol)}
-                        />
-                        <span className="ml-2 text-sm font-medium text-text-primary">
-                          {company.symbol}
-                        </span>
-                        {company.name && (
-                          <span className="ml-1 text-xs text-text-secondary truncate max-w-[120px]">
-                            {company.name}
-                          </span>
-                        )}
-                      </div>
-
-                      {!company.isDefault && (
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleRemoveCompany(company.symbol);
-                          }}
-                          className="p-1 text-text-secondary hover:text-red-500 transition-colors"
-                          title={`Remove ${company.symbol}`}
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </label>
-                  ))}
-                </div>
-
-                {/* Add Company Section */}
-                <div className="mt-3 pt-3 border-t border-border">
-                  {!showAddSearch ? (
-                    <button
-                      onClick={() => setShowAddSearch(true)}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm text-primary hover:bg-surface-light rounded-lg transition-colors"
-                    >
-                      <Plus size={14} />
-                      Add Company
-                    </button>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="relative">
-                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
-                        <input
-                          type="text"
-                          placeholder="Search ticker or name..."
-                          value={companySearch}
-                          onChange={(e) => handleCompanySearch(e.target.value)}
-                          autoFocus
-                          className="w-full pl-8 pr-8 py-2 text-sm bg-background border border-border rounded-lg text-text-primary placeholder-text-secondary focus:outline-none focus:ring-1 focus:ring-primary"
-                        />
-                        <button
-                          onClick={() => { setShowAddSearch(false); setCompanySearch(''); setSearchResults([]); }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-
-                      {isSearching && (
-                        <p className="text-xs text-text-secondary px-1">Searching...</p>
-                      )}
-
-                      {searchResults.length > 0 && (
-                        <div className="space-y-1">
-                          {searchResults.map((result) => (
-                            <button
-                              key={result.symbol}
-                              onClick={() => handleAddCompany(result.symbol, result.description)}
-                              className="w-full flex items-center justify-between p-2 text-sm rounded-md hover:bg-surface-light transition-colors"
-                            >
-                              <div className="text-left">
-                                <span className="font-medium text-text-primary">
-                                  {result.symbol}
-                                </span>
-                                <span className="ml-2 text-xs text-text-secondary truncate">
-                                  {result.description}
-                                </span>
-                              </div>
-                              <Plus size={14} className="text-primary flex-shrink-0" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {companySearch.trim().length > 0 && !isSearching && searchResults.length === 0 && (
-                        <p className="text-xs text-text-secondary px-1">No results found</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Done button */}
-              <div className="p-4 border-t border-border">
-                <button
-                  onClick={() => setIsFilterOpen(false)}
-                  className="w-full py-2.5 bg-primary text-black font-medium rounded-lg"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Desktop sidebar filter (unchanged) */}
-        <div className="hidden lg:block lg:w-1/4">
+        {/* Right Sidebar - Filters */}
+        <div
+          className={`lg:w-1/4 lg:block ${isFilterOpen ? "block" : "hidden"}`}
+        >
           <div className="sticky top-24 bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
               Companies

@@ -111,7 +111,7 @@ const AccountModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-10 md:pt-20 px-3 md:px-0"
+        <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-20"
             style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
             <div ref={modalRef}
                 className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in">

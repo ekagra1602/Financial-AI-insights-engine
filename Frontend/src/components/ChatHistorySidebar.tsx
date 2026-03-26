@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageSquare, Plus, Search, Trash2, X } from 'lucide-react';
+import { MessageSquare, Plus, Search, Trash2 } from 'lucide-react';
 
 export interface ChatConversation {
   id: string;
@@ -16,7 +16,6 @@ interface ChatHistorySidebarProps {
   onSelectConversation: (conversationId: string) => void;
   onNewChat: () => void;
   onDeleteConversation: (conversationId: string) => void;
-  onClose?: () => void;
 }
 
 const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
@@ -25,7 +24,6 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
   onSelectConversation,
   onNewChat,
   onDeleteConversation,
-  onClose,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -56,26 +54,16 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
   };
 
   return (
-    <div className="w-72 md:w-64 bg-surface border-r border-border flex flex-col h-full">
-      {/* Header with New Chat + Close on mobile */}
+    <div className="w-64 bg-surface border-r border-border flex flex-col h-full">
+      {/* New Chat Button */}
       <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onNewChat}
-            className="flex-1 flex items-center gap-3 px-4 py-3 bg-surface-light hover:bg-surface-light/80 rounded-lg transition-colors text-text-primary"
-          >
-            <Plus className="w-5 h-5" />
-            <span className="font-medium">New chat</span>
-          </button>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="md:hidden p-2 rounded-lg hover:bg-surface-light text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-        </div>
+        <button
+          onClick={onNewChat}
+          className="w-full flex items-center gap-3 px-4 py-3 bg-surface-light hover:bg-surface-light/80 rounded-lg transition-colors text-text-primary"
+        >
+          <Plus className="w-5 h-5" />
+          <span className="font-medium">New chat</span>
+        </button>
       </div>
 
       {/* Search */}

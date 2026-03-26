@@ -188,7 +188,7 @@ const WebSearch: React.FC = () => {
   ];
 
   return (
-    <div className="max-w-[1400px] mx-auto px-3 py-4 md:px-6 md:py-8">
+    <div className="max-w-[1400px] mx-auto px-6 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Left: main content */}
           <div className="lg:col-span-3 space-y-6">
@@ -208,7 +208,7 @@ const WebSearch: React.FC = () => {
                       fetchSuggestions(e.target.value);
                     }}
                     placeholder="Search stocks (AAPL), topics (AI chips), or ask: 'What's driving tech stocks today?'"
-                    className="w-full bg-background border border-border rounded-full pl-12 md:pl-16 pr-24 md:pr-36 py-3 md:py-4 text-base md:text-lg text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary shadow-sm"
+                    className="w-full bg-background border border-border rounded-full pl-16 pr-36 py-4 text-lg text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary shadow-sm"
                   />
 
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
