@@ -56,8 +56,8 @@ const Header: React.FC<HeaderProps> = () => {
   return (
     <>
       {/* ═══════════ TOP HEADER BAR ═══════════ */}
-      <header className="bg-surface border-b border-border sticky top-0 z-50">
-        <div className="max-w-[1920px] mx-auto px-3 md:px-6 py-3 md:py-4">
+      <header className="bg-surface border-b border-border sticky top-0 z-50 safe-area-top">
+        <div className="max-w-[1920px] mx-auto px-3 md:px-6 py-2.5 md:py-4">
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-4 md:gap-8">

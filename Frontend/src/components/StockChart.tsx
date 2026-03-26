@@ -131,7 +131,7 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
                 </div>
             </div>
 
-            <div className="relative w-full h-[340px] sm:h-[380px] lg:h-[440px]">
+            <div className="relative w-full h-[340px] sm:h-[380px] lg:h-[440px] overflow-hidden">
                 {/* Full overlay: only when we have NO data at all yet */}
                 {(loading && data.length === 0) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface/50 backdrop-blur-sm rounded-xl">
@@ -167,14 +167,14 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
                         autosize: true,
                         paper_bgcolor: 'rgba(0,0,0,0)',
                         plot_bgcolor: 'rgba(0,0,0,0)',
-                        margin: { l: 40, r: 20, t: 20, b: 40 },
+                        margin: { l: 40, r: 10, t: 10, b: 55 },
                         xaxis: {
                             showgrid: false,
                             zeroline: false,
                             showline: false,
                             color: '#666',
-                            tickfont: { color: '#666' },
-                            tickformat: '%b %d %Y %H:%M', // Consistent format with year
+                            tickfont: { color: '#666', size: 9 },
+                            tickformat: '%b %d %H:%M', // Shorter format for mobile
                             // Remove gaps (weekends, nights)
                             rangebreaks: [
                                 // Hide weekends for all
