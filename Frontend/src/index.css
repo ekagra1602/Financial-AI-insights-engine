@@ -11,6 +11,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: #0d0e0e;
   color: #ffffff;
+  /* Prevent overscroll bounce on iOS */
+  overscroll-behavior: none;
 }
 
 * {
@@ -36,3 +38,20 @@ body {
   background: #3a3b3c;
 }
 
+/* iOS safe area padding utilities */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Hide scrollbar for mobile horizontal scroll containers */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

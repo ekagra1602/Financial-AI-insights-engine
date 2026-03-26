@@ -86,7 +86,7 @@ export const CompanyStats: React.FC<CompanyStatsProps> = ({ symbol }) => {
     );
 
     return (
-        <div className="w-full bg-surface rounded-xl border border-border p-6 shadow-lg">
+        <div className="w-full bg-surface rounded-xl border border-border p-4 md:p-6 shadow-lg">
             <h3 className="text-lg font-bold text-text-primary mb-4 flex justify-between items-center">
                 <span>Key Statistics</span>
                 {stats.finnhubIndustry && (

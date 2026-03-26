@@ -140,9 +140,9 @@ const HomePage: React.FC = () => {
     };
 
     return (
-        <div className="flex h-[calc(100vh-64px)] p-6 gap-6">
-            {/* Left: Stock Graph (2/3 width) */}
-            <div className="w-2/3 h-full flex flex-col gap-6 pr-2 overflow-y-auto">
+        <div className="flex flex-col md:flex-row md:h-[calc(100vh-64px)] p-3 gap-3 md:p-6 md:gap-6">
+            {/* Left: Stock Graph (2/3 width on desktop, full on mobile) */}
+            <div className="w-full md:w-2/3 md:h-full flex flex-col gap-4 md:gap-6 md:pr-2 md:overflow-y-auto">
                 <div className="w-full">
                     <StockChart
                         symbol={symbol}
@@ -151,13 +151,13 @@ const HomePage: React.FC = () => {
                         onToggleWatchlist={handleToggleWatchlist}
                     />
                 </div>
-                <div className="mt-4 flex-none">
+                <div className="flex-none">
                     <CompanyStats symbol={symbol} />
                 </div>
             </div>
 
-            {/* Right: Search & List (1/3 width) */}
-            <div className="w-1/3 bg-surface rounded-xl border border-border p-4 flex flex-col h-full shadow-lg">
+            {/* Right: Search & List (1/3 width on desktop, full on mobile) */}
+            <div className="w-full md:w-1/3 bg-surface rounded-xl border border-border p-4 flex flex-col md:h-full max-h-[60vh] md:max-h-none shadow-lg">
                 <div className="mb-4">
                     <h2 className="text-xl font-bold mb-4 text-text-primary px-1">
                         {searchQuery ? "Search Results" : "Your Watchlist"}

@@ -369,7 +369,7 @@ export const NewsPage: React.FC = () => {
   }, [watchlistLoaded]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-3 py-4 md:px-4 md:py-6">
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Main Content - News Feed */}
         <div className="lg:w-3/4 space-y-4">
