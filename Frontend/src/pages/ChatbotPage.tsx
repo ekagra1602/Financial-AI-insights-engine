@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Chatbot, { Message } from '../components/Chatbot';
 import ChatHistorySidebar, { ChatConversation } from '../components/ChatHistorySidebar';
+import { Menu } from 'lucide-react';
 
 const STORAGE_KEY_CONVERSATIONS = 'chatbot_conversations';
 const STORAGE_KEY_MESSAGES = 'chatbot_messages_';
@@ -14,6 +15,7 @@ export const ChatbotPage: React.FC = () => {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Load conversations from localStorage on mount
   useEffect(() => {
@@ -210,12 +212,16 @@ export const ChatbotPage: React.FC = () => {
     
     // Set new conversation as active - this will trigger useEffect to load fresh messages
     setActiveConversationId(newId);
+
+    // Close sidebar on mobile after creating new chat
+    setIsSidebarOpen(false);
   };
 
   // Select a conversation
   const handleSelectConversation = (conversationId: string) => {
     // Don't switch if already on this conversation
     if (conversationId === activeConversationId) {
+      setIsSidebarOpen(false);
       return;
     }
 
@@ -227,6 +233,9 @@ export const ChatbotPage: React.FC = () => {
     // Switch to the selected conversation - this will trigger useEffect to load messages
     // The useEffect will handle clearing and loading messages
     setActiveConversationId(conversationId);
+
+    // Close sidebar on mobile
+    setIsSidebarOpen(false);
   };
 
   // Delete a conversation
@@ -323,25 +332,48 @@ export const ChatbotPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-80px)] w-full">
-      {/* Sidebar */}
-      <div className="flex-shrink-0">
+    <div className="flex h-[calc(100vh-80px)] md:h-[calc(100vh-80px)] w-full relative">
+      {/* Mobile sidebar backdrop */}
+      {isSidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — always visible on desktop, drawer on mobile */}
+      <div className={`
+        fixed md:relative inset-y-0 left-0 z-50 md:z-auto
+        transform transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        flex-shrink-0
+      `}>
         <ChatHistorySidebar
           conversations={conversations}
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
           onNewChat={createNewChat}
           onDeleteConversation={handleDeleteConversation}
+          onClose={() => setIsSidebarOpen(false)}
         />
       </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col bg-surface border-l border-border overflow-hidden">
-        <div className="border-b border-border p-4 bg-surface-light">
-          <h1 className="text-2xl font-semibold text-text-primary">Financial AI Assistant</h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Ask me about stocks, market trends, news, or any financial questions
-          </p>
+        <div className="border-b border-border p-3 md:p-4 bg-surface-light flex items-center gap-3">
+          {/* Mobile sidebar toggle */}
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="md:hidden p-1.5 rounded-lg hover:bg-surface transition-colors text-text-secondary"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-lg md:text-2xl font-semibold text-text-primary">Financial AI Assistant</h1>
+            <p className="text-xs md:text-sm text-text-secondary mt-0.5 md:mt-1">
+              Ask me about stocks, market trends, news, or any financial questions
+            </p>
+          </div>
         </div>
         <div className="flex-1 overflow-hidden">
           {activeConversationId && (
