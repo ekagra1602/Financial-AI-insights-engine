@@ -1,0 +1,10 @@
+.git/
+venv/
+__pycache__/
+*.pyc
+.env
+stock_data.db
+stock_data.db-shm
+stock_data.db-wal
+db_backups/
+.DS_Store

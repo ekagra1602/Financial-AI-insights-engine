@@ -11,5 +11,4 @@ twelvedata
 pandas
 pytz
 resend
-sqlite-utils
 numpy
