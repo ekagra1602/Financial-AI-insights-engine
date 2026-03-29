@@ -14,9 +14,10 @@ If a stock is added to the watchlist after the trigger time, it still gets check
 
 from datetime import datetime, timedelta
 from database import (
-    get_db, get_watchlist,
+    get_watchlist,
     save_generated_notification, notification_exists,
     get_generated_notifications_for_date,
+    get_bars_1m_range, get_bars_1m_row,
 )
 from services.stock_manager import manager as data_manager
 import pytz
@@ -36,25 +37,9 @@ LOOKBACK_HOURS = 2
 MOMENTUM_INTERVAL_MIN = 15     # generate a new momentum check every 15 min
 
 
-def _get_bars_1m_range(db, symbol: str, start: str, end: str = None):
+def _get_bars_1m_range_local(symbol: str, start: str, end: str = None):
     """Get earliest and latest bars_1m rows for a symbol in a time range."""
-    query = "symbol = ? AND datetime >= ?"
-    args = [symbol, start]
-    if end:
-        query += " AND datetime <= ?"
-        args.append(end)
-
-    try:
-        earliest = next(db["bars_1m"].rows_where(query, args, order_by="datetime ASC", limit=1))
-    except StopIteration:
-        return None, None
-
-    try:
-        latest = next(db["bars_1m"].rows_where(query, args, order_by="datetime DESC", limit=1))
-    except StopIteration:
-        return earliest, None
-
-    return earliest, latest
+    return get_bars_1m_range(symbol, start, end)
 
 
 def _calc_pct_change(open_price: float, close_price: float) -> float:
@@ -150,7 +135,7 @@ def _make_notification(notif_id: str, notif_type: str, symbol: str, name: str,
 
 # ===== 1. Daily End-of-Day (after 4 PM ET) =====
 
-def _check_daily_eod(db, watchlist) -> list[dict]:
+def _check_daily_eod(watchlist) -> list[dict]:
     """
     After 4 PM ET, compare 9:30 AM open to latest close for the day.
     Triggered once per symbol per day.
@@ -188,7 +173,7 @@ def _check_daily_eod(db, watchlist) -> list[dict]:
 
         # Compare 9:30 AM open to last close of the day
         market_open_str = now_et.replace(hour=9, minute=30, second=0).strftime("%Y-%m-%d %H:%M:%S")
-        earliest, latest = _get_bars_1m_range(db, symbol, market_open_str)
+        earliest, latest = _get_bars_1m_range_local(symbol, market_open_str)
 
         if not earliest or not latest:
             continue
@@ -215,7 +200,7 @@ def _check_daily_eod(db, watchlist) -> list[dict]:
 
 # ===== 2. Two-Hour Momentum (every 15 min) =====
 
-def _check_2h_momentum(db, watchlist) -> list[dict]:
+def _check_2h_momentum(watchlist) -> list[dict]:
     """
     Check if any stock moved ≥ 5% in the last 2 hours.
     Uses 15-minute time buckets so we don't spam the same alert.
@@ -240,7 +225,7 @@ def _check_2h_momentum(db, watchlist) -> list[dict]:
         if notification_exists(notif_id):
             continue
 
-        earliest, latest = _get_bars_1m_range(db, symbol, cutoff)
+        earliest, latest = _get_bars_1m_range_local(symbol, cutoff)
         if not earliest or not latest:
             continue
 
@@ -266,7 +251,7 @@ def _check_2h_momentum(db, watchlist) -> list[dict]:
 
 # ===== 3. Morning Gap (after 9:45 AM ET) =====
 
-def _check_morning_gap(db, watchlist) -> list[dict]:
+def _check_morning_gap(watchlist) -> list[dict]:
     """
     After 9:45 AM ET, compare today's open (9:30 AM) vs yesterday's last close.
     Triggered once per symbol per day.
@@ -305,28 +290,13 @@ def _check_morning_gap(db, watchlist) -> list[dict]:
         market_open_str = now_et.replace(hour=9, minute=30, second=0).strftime("%Y-%m-%d %H:%M:%S")
         today_end_str = now_et.replace(hour=9, minute=45, second=0).strftime("%Y-%m-%d %H:%M:%S")
 
-        try:
-            today_open_row = next(
-                db["bars_1m"].rows_where(
-                    "symbol = ? AND datetime >= ? AND datetime <= ?",
-                    [symbol, market_open_str, today_end_str],
-                    order_by="datetime ASC", limit=1,
-                )
-            )
-        except StopIteration:
+        today_open_row = get_bars_1m_row(symbol, "gte", market_open_str, order_asc=True)
+        if not today_open_row or today_open_row["datetime"] > today_end_str:
             continue
 
         # Yesterday's close: last available bar BEFORE today's open
-        # This handles weekends, holidays, and data gaps gracefully
-        try:
-            yesterday_close_row = next(
-                db["bars_1m"].rows_where(
-                    "symbol = ? AND datetime < ?",
-                    [symbol, market_open_str],
-                    order_by="datetime DESC", limit=1,
-                )
-            )
-        except StopIteration:
+        yesterday_close_row = get_bars_1m_row(symbol, "lt", market_open_str, order_asc=False)
+        if not yesterday_close_row:
             continue
 
         prev_close = float(yesterday_close_row["close"])
@@ -384,14 +354,10 @@ def generate_all_notifications() -> list[dict]:
         except Exception as e:
             print(f"  [Notification] Could not prefetch data for {item['symbol']}: {e}")
 
-    db = get_db()
-    if "bars_1m" not in db.table_names():
-        return []
-
     # Generate new notifications (each function handles its own trigger logic)
-    _check_daily_eod(db, watchlist)
-    _check_2h_momentum(db, watchlist)
-    _check_morning_gap(db, watchlist)
+    _check_daily_eod(watchlist)
+    _check_2h_momentum(watchlist)
+    _check_morning_gap(watchlist)
     # News briefing is NOT called here — it's triggered by a separate endpoint
 
     # Return all generated notifications for today

@@ -21,6 +21,7 @@ Backend/__pycache__/
 # Dependencies
 node_modules/
 package-lock.json
+!Frontend/package-lock.json
 
 # Build output
 dist/
@@ -82,4 +83,10 @@ coverage/
 
 # Production builds (if not needed in repo)
 *.tsbuildinfo
+
+# Docker
+docker-compose.override.yml
+
+# Android Gradle cache
+Frontend/android/.gradle/
 
