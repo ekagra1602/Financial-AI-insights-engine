@@ -37,7 +37,9 @@ export const searchStocks = async (
   query: string
 ): Promise<{ count: number; result: StockSymbol[] }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/search?q=${query}`);
+    const response = await fetch(
+      `${API_BASE_URL}/search?q=${encodeURIComponent(query)}`
+    );
     if (!response.ok) {
       throw new Error("Failed to search stocks");
     }

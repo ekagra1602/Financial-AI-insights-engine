@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from fastapi import APIRouter, HTTPException, Query
 from dotenv import load_dotenv
@@ -12,6 +13,24 @@ FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
 if not FINNHUB_API_KEY:
     print("Warning: FINNHUB_API_KEY not found in environment variables.")
+
+# Finnhub search is global; our OHLC pipeline (TwelveData + US session logic) expects US-style tickers.
+# Symbols like BOFA.NE (NEO) or X.TO are valid in Finnhub but are not accepted by time_series as-is.
+_US_SEARCH_SYMBOL = re.compile(
+    r"^(?:[A-Z]{1,5}|[A-Z]{1,5}\.[A-Z]|[A-Z]{1,5}-[A-Z])$"
+)
+
+
+def _symbol_ok_for_us_price_stack(symbol: str) -> bool:
+    s = (symbol or "").strip().upper()
+    return bool(_US_SEARCH_SYMBOL.match(s))
+
+
+def _filter_search_results(data: dict) -> dict:
+    raw = data.get("result") or []
+    filtered = [r for r in raw if _symbol_ok_for_us_price_stack(r.get("symbol", ""))]
+    return {"count": len(filtered), "result": filtered}
+
 
 def get_finnhub_quote(symbol: str):
     url = f"{FINNHUB_BASE_URL}/quote"
@@ -74,7 +93,9 @@ async def search_stocks(q: str = Query(..., description="Search query")):
     if not FINNHUB_API_KEY:
         raise HTTPException(status_code=500, detail="API Key not configured")
     try:
-        return get_finnhub_search(q)
+        return _filter_search_results(get_finnhub_search(q.strip()))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -120,5 +141,7 @@ async def get_key_statistics(symbol: str = Query(..., description="Stock symbol"
         
         return stats
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

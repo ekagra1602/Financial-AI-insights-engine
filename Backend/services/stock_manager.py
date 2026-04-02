@@ -40,6 +40,10 @@ class DataManager:
         - If market is OPEN: fetch if data > 2 min old
         - If market is CLOSED: fetch ONLY if we don't have the last market close data
         """
+        symbol = (symbol or "").strip().upper()
+        if not symbol:
+            return fetch_history(symbol, "bars_1m" if timeframe == "1min" else ("bars_1h" if timeframe == "1h" else "bars_1d"))
+
         table_name = "bars_1m" if timeframe == "1min" else ("bars_1h" if timeframe == "1h" else "bars_1d")
         interval = "1min" if timeframe == "1min" else ("1h" if timeframe == "1h" else "1day")
         
