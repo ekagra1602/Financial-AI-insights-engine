@@ -137,13 +137,12 @@ class NewsProcessor:
             # If ticker is specified, we ONLY want to save/return if it's relevant.
             final_ticker = "Market"
             headline = item.get('headline', '')
-            keywords = ai_result.get('keywords', [])
             company_name = ''
 
             if ticker:
                 company_name = self._get_company_name(ticker)
 
-                if self._is_relevant(ticker, company_name, summary, keywords, headline):
+                if self._is_relevant(ticker, company_name, summary, headline):
                     final_ticker = ticker
                 else:
                     print(f"Skipping irrelevant article for {ticker}: {headline[:60]}")
@@ -196,21 +195,16 @@ class NewsProcessor:
             self.company_name_cache[ticker] = ''  # Cache empty to avoid repeated failures
             return ''
 
-    def _is_relevant(self, ticker, company_name, summary, keywords, headline):
+    def _is_relevant(self, ticker, company_name, summary, headline):
         """
-        Checks if the article is primarily about the ticker/company.
-
-        Headline match is required as the primary signal — if the company
-        isn't in the headline, the article is likely not about them.
-        Keyword/summary matches alone are not enough because companies
-        get mentioned in passing in articles about other companies.
+        True if the ticker or cleaned company name appears in the headline
+        or in the AI-generated summary (case-insensitive substring match).
         """
         if not ticker or ticker == "Market":
             return True
 
         ticker_upper = ticker.upper()
 
-        # Prepare search terms
         search_terms = {ticker_upper}
 
         if company_name:
@@ -219,19 +213,11 @@ class NewsProcessor:
             if len(clean_name) > 2:
                 search_terms.add(clean_name.upper())
 
-        # Headline is the strongest signal — if the company is in the headline,
-        # the article is almost certainly about them
         headline_upper = headline.upper()
-        if any(term in headline_upper for term in search_terms):
-            return True
-
-        # If not in headline, require BOTH keyword AND summary mention
-        # to avoid false positives from passing mentions
-        keyword_match = any(term in k.upper() for k in keywords for term in search_terms)
         summary_upper = summary.upper()
-        summary_match = any(term in summary_upper for term in search_terms)
-
-        return keyword_match and summary_match
+        return any(term in headline_upper for term in search_terms) or any(
+            term in summary_upper for term in search_terms
+        )
 
 
     def _hash_url(self, url: str) -> str:
