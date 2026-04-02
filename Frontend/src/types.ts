@@ -22,6 +22,26 @@ export interface StockDataPoint {
   volume: number;
 }
 
+/** Notable moves on the price series (backend + chart markers). */
+export interface ChartEvent {
+  index: number;
+  label: string;
+  time: string;
+  event_date: string;
+  price: number;
+  pct_change: number;
+}
+
+/** Lazy-fetched news for one calendar day (separate from main news cache). */
+export interface StockEventNewsItem {
+  event_date: string;
+  headline: string | null;
+  summary: string | null;
+  url: string | null;
+  source: string | null;
+  from_cache: boolean;
+}
+
 export interface NewsArticle {
   id: string;
   source: string;
