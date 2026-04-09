@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SummarizedNewsArticle } from '../../types';
-import { TrendingUp, TrendingDown, Minus, BarChart2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, BarChart2, Volume2, Square } from 'lucide-react';
 
 interface NewsCardProps {
   article: SummarizedNewsArticle;
@@ -8,9 +8,51 @@ interface NewsCardProps {
 }
 
 export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) => {
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (utteranceRef.current && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const handleReadSummary = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      alert('Text-to-speech is not supported in this browser.');
+      return;
+    }
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      utteranceRef.current = null;
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(`${article.headline}. ${article.summary}`);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+
+    utteranceRef.current = utterance;
+    setIsSpeaking(true);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
+
   // Get sentiment icon and class
   const getSentimentDetails = (sentiment: string) => {
-    switch(sentiment) {
+    switch (sentiment) {
       case 'positive':
         return {
           icon: <TrendingUp size={14} className="mr-1.5" />,
@@ -32,7 +74,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) =>
 
   // Get tone icon and class
   const getToneDetails = (tone: string) => {
-    switch(tone) {
+    switch (tone) {
       case 'bullish':
         return {
           icon: <BarChart2 size={14} className="mr-1.5" />,
@@ -66,7 +108,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) =>
           <div className="bg-slate-800 dark:bg-slate-700 text-white px-3 py-1.5 rounded font-bold text-sm mr-2">
             {article.ticker}
           </div>
-          
+
           {/* Source and Time */}
           <div className="ml-auto flex items-center text-xs text-gray-500 dark:text-gray-400">
             <span className="font-medium">{article.source}</span>
@@ -74,24 +116,38 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) =>
             <span>{article.publishedTime}</span>
           </div>
         </div>
-        
+
         {/* Headline */}
         <h3 className="font-semibold text-lg text-slate-900 dark:text-slate-100 mb-2">
-          <a 
-            href={article.url} 
-            target="_blank" 
+          <a
+            href={article.url}
+            target="_blank"
             rel="noopener noreferrer"
             className="hover:text-primary transition-colors duration-200"
           >
             {article.headline}
           </a>
         </h3>
-        
+
         {/* Summary */}
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
           {article.summary}
         </p>
-        
+
+        <div className="mb-3">
+          <button
+            onClick={handleReadSummary}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+              isSpeaking
+                ? 'bg-primary text-black border-primary'
+                : 'bg-surface-light text-text-secondary border-border hover:text-text-primary'
+            }`}
+          >
+            {isSpeaking ? <Square size={13} /> : <Volume2 size={13} />}
+            {isSpeaking ? 'Stop Audio' : 'Listen Summary'}
+          </button>
+        </div>
+
         {/* Sentiment and Tone Indicators - Professional Design */}
         <div className="flex items-center flex-wrap gap-3 mb-3">
           {/* Sentiment Indicator */}
@@ -100,7 +156,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) =>
             <span className="mr-1 font-semibold">Sentiment:</span>
             <span className="capitalize">{article.sentiment}</span>
           </div>
-          
+
           {/* Tone Indicator - Different design */}
           <div className={`flex items-center px-3 py-1.5 rounded-md border text-xs font-medium ${toneDetails.class}`}>
             {toneDetails.icon}
@@ -108,21 +164,21 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) =>
             <span className="capitalize">{article.tone}</span>
           </div>
         </div>
-        
+
         {/* Keywords and Action Button */}
         <div className="flex flex-wrap justify-between items-center mt-1">
           {/* Keywords */}
           <div className="flex flex-wrap gap-1.5">
             {article.keywords.map((keyword, idx) => (
-              <span 
-                key={idx} 
+              <span
+                key={idx}
                 className="inline-block px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs rounded"
               >
                 {keyword}
               </span>
             ))}
           </div>
-          
+
           {/* Action Button - with black text */}
           <button
             onClick={() => onShowRelated(article.id)}

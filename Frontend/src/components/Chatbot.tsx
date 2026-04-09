@@ -1,11 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, MicOff, Loader2, Bot, User } from 'lucide-react';
+import { Send, Mic, MicOff, Loader2, Bot, User, Volume2, Square } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  stockData?: {
+    name: string;
+    ticker: string;
+    price: number | null;
+    change: number | null;
+    percent: number | null;
+    high: number | null;
+    low: number | null;
+    mcap: string;
+    industry: string;
+    logo?: string;
+  };
 }
 
 interface ChatbotProps {
@@ -15,11 +29,102 @@ interface ChatbotProps {
   onMessagesChange?: (messages: Message[]) => void;
 }
 
+interface ChatRequestOptions {
+  eli5?: boolean;
+  includeNews?: boolean;
+  ticker?: string;
+  improveSummary?: boolean;
+  history?: { role: string; content: string }[];
+}
+
+const API_TIMEOUT_MS = 35000;
+const RETRY_DELAY_MS = 400;
+
+const buildChatEndpoints = (): string[] => {
+  const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').trim();
+  const normalizedBaseUrl = rawBaseUrl.replace(/\/+$/, '');
+
+  return Array.from(new Set([
+    '/api/v1/chat',
+    `${normalizedBaseUrl}/api/v1/chat`,
+  ]));
+};
+
+const postChatMessage = async (message: string, options: ChatRequestOptions = {}): Promise<string> => {
+  const payload = JSON.stringify({
+    message,
+    eli5: Boolean(options.eli5),
+    include_news: Boolean(options.includeNews),
+    ticker: options.ticker || null,
+    improve_summary: Boolean(options.improveSummary),
+    history: options.history || null,
+  });
+  const endpoints = buildChatEndpoints();
+  let lastError: unknown;
+
+  for (const endpoint of endpoints) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: payload,
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          let detail = '';
+          const contentType = response.headers.get('content-type') || '';
+          try {
+            if (contentType.includes('application/json')) {
+              const body = await response.json();
+              detail = String(body?.detail || body?.response || '').trim();
+            } else {
+              detail = (await response.text()).trim();
+            }
+          } catch {
+            detail = '';
+          }
+
+          throw new Error(`HTTP_${response.status}:${detail || response.statusText || 'Request failed'}`);
+        }
+
+        const data = await response.json();
+        if (typeof data?.response !== 'string') {
+          throw new Error('INVALID_PAYLOAD');
+        }
+
+        return data; // Return full object
+      } catch (error) {
+        lastError = error;
+        console.error(`Chat request failed via ${endpoint} (attempt ${attempt}):`, error);
+
+        const canRetry = error instanceof TypeError || (error instanceof DOMException && error.name === 'AbortError');
+        if (attempt < 2 && canRetry) {
+          await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAY_MS));
+          continue;
+        }
+
+        break;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('All chat endpoints failed');
+};
+
 const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, initialMessages, onMessagesChange }) => {
   const defaultMessage: Message = {
     id: '1',
     role: 'assistant',
-    content: 'Hello! I\'m your financial AI assistant. I can help you with stock information, market analysis, news, and more. How can I assist you today?',
+    content: 'Hello! I\'m your financial AI assistant. I can fetch and summarize the **latest market news**, provide **company-specific insights**, and explain complex concepts in **ELI5 mode**. \n\nHow can I help you today?',
     timestamp: new Date()
   };
 
@@ -29,8 +134,39 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
   const [isRecording, setIsRecording] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState('');
+  const [eli5Mode, setEli5Mode] = useState(false);
+  const [activeSpeechId, setActiveSpeechId] = useState<string | null>(null);
+  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    const loadVoices = () => {
+      const availableVoices = window.speechSynthesis.getVoices();
+      if (!availableVoices.length) return;
+
+      // Prioritize natural voices: Google (Chrome Cloud-based), Samantha (macOS), or Premium descriptors
+      const bestVoice = 
+        availableVoices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) ||
+        availableVoices.find(v => v.name.includes('Samantha')) ||
+        availableVoices.find(v => v.name.includes('Premium')) ||
+        availableVoices.find(v => v.lang.startsWith('en')) ||
+        availableVoices[0];
+
+      setSelectedVoice(bestVoice);
+    };
+
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    return () => {
+      if (window.speechSynthesis) {
+         window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
   const isInitialMount = useRef(true);
 
   const scrollToBottom = () => {
@@ -79,69 +215,36 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
     }
   }, [messages, onMessagesChange]);
 
-  // Mock response generator for testing without backend
-  const getMockResponse = (userMessage: string): string => {
-    const lowerMessage = userMessage.toLowerCase();
-    
-    // Stock price queries
-    if (lowerMessage.includes('price') || lowerMessage.includes('stock') || lowerMessage.includes('ticker')) {
-      if (lowerMessage.includes('qualcomm') || lowerMessage.includes('qcom')) {
-        return 'Qualcomm (QCOM) is currently trading at $142.50, up 2.3% today. The stock has shown strong performance this quarter with positive earnings growth. Would you like more detailed analysis?';
-      }
-      if (lowerMessage.includes('apple') || lowerMessage.includes('aapl')) {
-        return 'Apple (AAPL) is currently trading at $178.25, down 0.5% today. The company recently announced strong iPhone sales. I can provide more detailed financial metrics if you\'d like.';
-      }
-      return 'I can help you find stock prices for any ticker symbol. For example, Qualcomm (QCOM) is currently at $142.50. Which stock would you like to know more about?';
-    }
-    
-    // Market trends
-    if (lowerMessage.includes('market') || lowerMessage.includes('trend') || lowerMessage.includes('dow') || lowerMessage.includes('s&p')) {
-      return 'The market is showing mixed signals today. The S&P 500 is up 0.3%, while the Dow Jones is down 0.1%. Technology stocks are performing well, with semiconductors leading gains. Would you like specific sector analysis?';
-    }
-    
-    // News queries
-    if (lowerMessage.includes('news') || lowerMessage.includes('latest') || lowerMessage.includes('update')) {
-      return 'Here are the latest financial news highlights:\n\n• Tech stocks rally on strong earnings reports\n• Federal Reserve maintains current interest rates\n• Semiconductor sector shows 15% growth this quarter\n• New AI regulations impact tech valuations\n\nWould you like details on any specific news item?';
-    }
-    
-    // Portfolio questions
-    if (lowerMessage.includes('portfolio') || lowerMessage.includes('investment') || lowerMessage.includes('holdings')) {
-      return 'Based on your portfolio, you\'re currently diversified across technology, healthcare, and finance sectors. Your portfolio is up 8.5% this quarter. Top performers include QCOM (+12%), AAPL (+6%), and MSFT (+9%). Would you like a detailed breakdown?';
-    }
-    
-    // Earnings questions
-    if (lowerMessage.includes('earnings') || lowerMessage.includes('revenue') || lowerMessage.includes('profit')) {
-      return 'Qualcomm reported strong Q4 earnings with revenue of $9.3B, up 5% YoY. EPS beat estimates at $2.02. The company\'s automotive and IoT segments showed particularly strong growth. Should I dive deeper into the financials?';
-    }
-    
-    // Greetings
-    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
-      return 'Hello! I\'m here to help with your financial questions. I can assist with stock prices, market analysis, news, portfolio insights, and more. What would you like to know?';
-    }
-    
-    // Help requests
-    if (lowerMessage.includes('help') || lowerMessage.includes('what can you do') || lowerMessage.includes('capabilities')) {
-      return 'I can help you with:\n\n📊 Stock prices and real-time quotes\n📈 Market trends and analysis\n📰 Latest financial news\n💼 Portfolio insights and recommendations\n📉 Earnings reports and financial metrics\n🔍 Company research and analysis\n\nWhat would you like to explore?';
-    }
-    
-    // Default responses
-    const defaultResponses = [
-      'That\'s an interesting question! Let me help you with that. Based on current market data, I can provide insights on stock performance, market trends, or financial news. What specific information are you looking for?',
-      'I understand you\'re asking about financial markets. I can help you with stock information, market analysis, or the latest news. Could you be more specific about what you\'d like to know?',
-      'Great question! I specialize in financial information and market analysis. I can help you with stock prices, portfolio insights, earnings data, or market trends. What would you like to explore?',
-      'I\'m here to assist with your financial queries. I can provide information on stocks, market trends, news, and portfolio analysis. How can I help you today?'
-    ];
-    
-    return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
-  };
 
-  // Simulate API delay
-  const simulateDelay = (ms: number = 1500) => {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  };
-
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, options: ChatRequestOptions = {}) => {
     if (!text.trim() || isLoading) return;
+
+    let resolvedOptions: ChatRequestOptions = { ...options };
+    let backendText = text;
+
+    // If user asks for "better summary", reuse the latest news context.
+    if (/better summary|improve summary|more detailed summary/i.test(text)) {
+      const latestNewsMessage = [...messages]
+        .reverse()
+        .find((m) => m.role === 'assistant' && /Latest\s+.+\s+News Summaries/i.test(m.content));
+
+      if (latestNewsMessage) {
+        const tickerMatch = latestNewsMessage.content.match(/Latest\s+([A-Za-z]+)\s+News Summaries/i);
+        const inferredTicker = tickerMatch?.[1] && tickerMatch[1].toLowerCase() !== 'market'
+          ? tickerMatch[1].toUpperCase()
+          : undefined;
+
+        resolvedOptions = {
+          ...resolvedOptions,
+          includeNews: true,
+          improveSummary: true,
+          ticker: inferredTicker,
+        };
+        backendText = inferredTicker
+          ? `Give me a better summary of the latest ${inferredTicker} news.`
+          : 'Give me a better summary of the latest market news.';
+      }
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -155,50 +258,59 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
     setIsLoading(true);
 
     try {
-      // Simulate API delay for realistic UX
-      await simulateDelay(1000 + Math.random() * 1000);
-
-      // TODO: Replace with actual API call when backend is ready
-      // Uncomment below and remove mock response when connecting to backend:
-      /*
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: text,
-          userId: userId || 'default-user',
-          conversationId: conversationId || `conv-${Date.now()}`,
-          mode: 'text'
-        }),
+      const result = await postChatMessage(backendText, {
+        eli5: eli5Mode || resolvedOptions.eli5,
+        includeNews: resolvedOptions.includeNews,
+        ticker: resolvedOptions.ticker,
+        improveSummary: resolvedOptions.improveSummary,
+        history: messages.map(m => ({ role: m.role, content: m.content })),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to get response');
-      }
-
-      const data = await response.json();
-      const responseText = data.response || 'I apologize, but I couldn\'t process your request at this time.';
-      */
-
-      // Mock response for testing
-      const responseText = getMockResponse(text);
-      
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: responseText,
-        timestamp: new Date()
+        content: (result as any).response,
+        timestamp: new Date(),
+        stockData: (result as any).stock_data
       };
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error sending message:', error);
+      const rawError = error instanceof Error ? error.message : '';
+      const isTimeout = (error instanceof DOMException && error.name === 'AbortError')
+        || rawError.includes('AbortError');
+      const isNetwork = error instanceof TypeError || rawError.includes('Failed to fetch');
+      let friendlyMessage = '';
+
+      if (rawError.startsWith('HTTP_')) {
+        const [statusPart, detailPart] = rawError.replace('HTTP_', '').split(':', 2);
+        const statusCode = Number(statusPart);
+        const detail = (detailPart || '').trim();
+
+        if (statusCode === 400) {
+          friendlyMessage = `Request issue: ${detail || 'Please update your message and try again.'}`;
+        } else if (statusCode === 429) {
+          friendlyMessage = 'Upstream API rate limit reached. Please wait 30-60 seconds and retry.';
+        } else if (statusCode >= 500) {
+          friendlyMessage = `Backend error (${statusCode})${detail ? `: ${detail}` : ''}. Please retry.`;
+        } else {
+          friendlyMessage = `Request failed (${statusCode})${detail ? `: ${detail}` : ''}.`;
+        }
+      } else if (rawError === 'INVALID_PAYLOAD') {
+        friendlyMessage = 'Received an invalid response from backend. Please retry.';
+      } else if (isTimeout) {
+        friendlyMessage = 'The request timed out. Please retry in a moment.';
+      } else if (isNetwork) {
+        friendlyMessage = 'I couldn\'t reach the backend chat service. Make sure backend is running at http://127.0.0.1:8000, then try again.';
+      } else {
+        friendlyMessage = 'Request failed unexpectedly. Please try again.';
+      }
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I\'m sorry, I encountered an error. Please try again or check your connection.',
+        content: friendlyMessage,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -219,7 +331,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
   const startRecording = () => {
     // Check if SpeechRecognition is available
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
+
     if (!SpeechRecognition) {
       alert('Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.');
       return;
@@ -304,7 +416,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
       recognitionRef.current.stop();
       recognitionRef.current = null;
       setInterimTranscript('');
-      
+
       // If there's text in the input, send it
       if (inputText.trim()) {
         handleSendMessage(inputText.trim());
@@ -313,12 +425,69 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
     }
   };
 
-  // Cleanup recognition on unmount
+  const cleanTextForSpeech = (text: string): string => {
+    return text
+      .replace(/###\s+/g, '') // Remove headers
+      .replace(/\*\*/g, '')   // Remove bold
+      .replace(/\*/g, '')    // Remove italic
+      .replace(/🔗\s*\[.*?\]\(.*?\)/g, '') // Remove link buttons
+      .replace(/\[.*?\]\(.*?\)/g, '')    // Remove markdown links
+      .replace(/---/g, ' ')   // Remove separators
+      .replace(/>\s+/g, '')   // Remove quotes
+      .replace(/####\s+/g, '') // Remove subheaders
+      .trim();
+  };
+
+  const stopSpeaking = () => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setActiveSpeechId(null);
+    }
+  };
+
+  const speakMessage = (id: string, text: string) => {
+    if (!window.speechSynthesis) {
+      alert('Text-to-speech is not supported in this browser.');
+      return;
+    }
+
+    if (activeSpeechId === id) {
+      stopSpeaking();
+      return;
+    }
+
+    // Stop any current speech
+    stopSpeaking();
+
+    const cleanedText = cleanTextForSpeech(text);
+    const utterance = new SpeechSynthesisUtterance(cleanedText);
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+    // rate 1.0 is default, but ensuring rate speeds are fully normal
+    utterance.rate = 1.0; 
+    utterance.pitch = 1.0;
+
+    utterance.onend = () => setActiveSpeechId(null);
+    utterance.onerror = (e) => {
+      console.error('TTS Error:', e);
+      setActiveSpeechId(null);
+    };
+
+    setActiveSpeechId(id);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Cleanup recognition and speech on unmount
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
         recognitionRef.current = null;
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
       }
     };
   }, []);
@@ -331,6 +500,18 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
     }
   };
 
+  const requestLatestMarketNews = () => {
+    handleSendMessage('Give me the latest market news summaries.', { includeNews: true });
+  };
+
+  const requestLatestCompanyNews = () => {
+    if (!inputText.trim()) {
+      setInputText('Give me the latest news summary for AAPL.');
+      return;
+    }
+    handleSendMessage(inputText, { includeNews: true });
+  };
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Messages Area */}
@@ -338,9 +519,8 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex gap-3 ${
-              message.role === 'user' ? 'justify-end' : 'justify-start'
-            }`}
+            className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
           >
             {message.role === 'assistant' && (
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
@@ -348,16 +528,56 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
               </div>
             )}
             <div
-              className={`max-w-[70%] rounded-lg px-4 py-3 ${
-                message.role === 'user'
-                  ? 'bg-primary text-background'
-                  : 'bg-surface border border-border text-text-primary'
-              }`}
+              className={`max-w-[70%] rounded-lg px-4 py-3 relative group ${message.role === 'user'
+                ? 'bg-primary text-background'
+                : 'bg-surface border border-border text-text-primary'
+                }`}
             >
-              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-              <p className={`text-xs mt-1 ${
-                message.role === 'user' ? 'text-background/70' : 'text-text-secondary'
-              }`}>
+              {message.role === 'assistant' && (
+                <button
+                  onClick={() => speakMessage(message.id, message.content)}
+                  className={`absolute -right-10 top-0 p-2 rounded-full transition-all opacity-0 group-hover:opacity-100 bg-surface-light border border-border hover:bg-surface-dark ${activeSpeechId === message.id ? 'opacity-100 text-primary border-primary' : 'text-text-secondary'}`}
+                  title={activeSpeechId === message.id ? "Stop speaking" : "Listen to summary"}
+                >
+                  {activeSpeechId === message.id ? (
+                    <Square className="w-4 h-4 fill-current" />
+                  ) : (
+                    <Volume2 className="w-4 h-4" />
+                  )}
+                </button>
+              )}
+              {message.role === 'assistant' && message.stockData && (
+                <div className="mb-3 p-3 bg-surface-dark border border-border rounded-md shadow-sm">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    {message.stockData.logo && (
+                      <img src={message.stockData.logo} alt={message.stockData.name} className="w-5 h-5 rounded-full" />
+                    )}
+                    <div className={`w-2.5 h-2.5 rounded-full ${(message.stockData.change || 0) >= 0 ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="font-bold text-sm text-text-primary">
+                      {message.stockData.name} ({message.stockData.ticker})
+                    </span>
+                  </div>
+                  <div className="text-xs text-text-secondary space-y-1">
+                    <p>
+                      <span className="font-semibold text-text-primary">Price:</span> ${message.stockData.price} 
+                      <span className={ (message.stockData.change || 0) >= 0 ? 'text-green-500' : 'text-red-500' }>
+                         ({(message.stockData.change || 0) >= 0 ? '+' : ''}{message.stockData.change} / {(message.stockData.percent || 0) >= 0 ? '+' : ''}{message.stockData.percent}%)
+                      </span>
+                    </p>
+                    <p>
+                      Details: Range: <span className="text-text-primary">${message.stockData.low} - ${message.stockData.high}</span> . Market Cap: <span className="text-text-primary">{message.stockData.mcap}</span> . Industry: <span className="text-text-primary">{message.stockData.industry}</span>
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className={`text-sm prose max-w-none ${message.role === 'assistant' ? 'prose-invert' : ''
+                }`}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message.content}
+                </ReactMarkdown>
+              </div>
+              <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-background/70' : 'text-text-secondary'
+                }`}>
                 {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
@@ -383,6 +603,34 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
 
       {/* Input Area */}
       <div className="border-t border-border p-4 bg-surface">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setEli5Mode(prev => !prev)}
+            className={`px-3 py-1.5 rounded-md border text-xs font-medium transition-colors ${eli5Mode
+              ? 'bg-primary text-background border-primary'
+              : 'bg-surface-light text-text-secondary border-border hover:text-text-primary'
+              }`}
+          >
+            {eli5Mode ? 'ELI5: ON' : 'ELI5: OFF'}
+          </button>
+          <button
+            type="button"
+            onClick={requestLatestMarketNews}
+            disabled={isLoading}
+            className="px-3 py-1.5 rounded-md border border-border bg-surface-light text-text-secondary hover:text-text-primary text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            Latest Market News
+          </button>
+          <button
+            type="button"
+            onClick={requestLatestCompanyNews}
+            disabled={isLoading}
+            className="px-3 py-1.5 rounded-md border border-border bg-surface-light text-text-secondary hover:text-text-primary text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            Summarize Typed Ticker News
+          </button>
+        </div>
         <form onSubmit={handleTextSubmit} className="flex gap-3">
           <div className="flex-1 relative">
             <input
@@ -406,11 +654,10 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
             type="button"
             onClick={toggleRecording}
             disabled={isLoading}
-            className={`px-4 py-3 rounded-lg transition-colors ${
-              isRecording
-                ? 'bg-negative text-white hover:bg-negative/90'
-                : 'bg-surface-light text-text-primary hover:bg-surface-light/80 border border-border'
-            }`}
+            className={`px-4 py-3 rounded-lg transition-colors ${isRecording
+              ? 'bg-negative text-white hover:bg-negative/90'
+              : 'bg-surface-light text-text-primary hover:bg-surface-light/80 border border-border'
+              }`}
             title={isRecording ? 'Stop recording' : 'Start voice recording'}
           >
             {isRecording ? (
@@ -443,4 +690,3 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
 };
 
 export default Chatbot;
-
