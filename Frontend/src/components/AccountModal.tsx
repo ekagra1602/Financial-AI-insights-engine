@@ -111,10 +111,10 @@ const AccountModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-10 md:pt-20 px-3 md:px-0"
+        <div className="fixed inset-0 z-[9999] flex items-center md:items-start justify-center p-3 md:pt-20 md:px-0"
             style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
             <div ref={modalRef}
-                className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in">
+                className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-border">
                     <h2 className="text-lg font-bold text-text-primary">Account Settings</h2>
@@ -124,7 +124,7 @@ const AccountModal: React.FC<Props> = ({ isOpen, onClose }) => {
                     </button>
                 </div>
 
-                <div className="px-6 py-5 space-y-5">
+                <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
                     {/* Status message */}
                     {message && (
                         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${message.type === 'success'

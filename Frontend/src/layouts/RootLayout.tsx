@@ -41,8 +41,8 @@ const AppShell: React.FC = () => {
         </div>
       )}
 
-      {/* Main content area — pb-16 for mobile bottom nav bar */}
-      <main className="pb-16 md:pb-0">
+      {/* Main content area — pt-0 and enough pb for mobile bottom nav bar */}
+      <main className="pb-[100px] mb-[env(safe-area-inset-bottom)] md:pb-0 md:mb-0">
         <Outlet />
       </main>
     </div>

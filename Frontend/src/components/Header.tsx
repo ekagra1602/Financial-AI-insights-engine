@@ -183,8 +183,8 @@ const Header: React.FC<HeaderProps> = () => {
 
         {/* Mobile notification dropdown — full width */}
         {dropdownOpen && (
-          <div className="md:hidden border-t border-border" ref={dropdownRef}>
-            <div className="max-h-[50vh] bg-surface overflow-hidden flex flex-col">
+          <div className="md:hidden absolute left-0 right-0 top-full shadow-2xl z-50 border-t border-border" ref={dropdownRef}>
+            <div className="max-h-[75vh] bg-surface overflow-hidden flex flex-col rounded-b-2xl">
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <span className="font-semibold text-text-primary">Notifications</span>
                 {unreadCount > 0 && (
