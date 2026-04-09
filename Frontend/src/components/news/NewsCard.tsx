@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SummarizedNewsArticle } from '../../types';
-import { TrendingUp, TrendingDown, Minus, BarChart2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, BarChart2, Volume2, Square } from 'lucide-react';
 
 interface NewsCardProps {
   article: SummarizedNewsArticle;
@@ -8,6 +8,48 @@ interface NewsCardProps {
 }
 
 export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) => {
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (utteranceRef.current && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const handleReadSummary = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      alert('Text-to-speech is not supported in this browser.');
+      return;
+    }
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      utteranceRef.current = null;
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(`${article.headline}. ${article.summary}`);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+
+    utteranceRef.current = utterance;
+    setIsSpeaking(true);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
+
   // Get sentiment icon and class
   const getSentimentDetails = (sentiment: string) => {
     switch (sentiment) {
@@ -91,6 +133,20 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, onShowRelated }) =>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
           {article.summary}
         </p>
+
+        <div className="mb-3">
+          <button
+            onClick={handleReadSummary}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+              isSpeaking
+                ? 'bg-primary text-black border-primary'
+                : 'bg-surface-light text-text-secondary border-border hover:text-text-primary'
+            }`}
+          >
+            {isSpeaking ? <Square size={13} /> : <Volume2 size={13} />}
+            {isSpeaking ? 'Stop Audio' : 'Listen Summary'}
+          </button>
+        </div>
 
         {/* Sentiment and Tone Indicators - Professional Design */}
         <div className="flex items-center flex-wrap gap-3 mb-3">

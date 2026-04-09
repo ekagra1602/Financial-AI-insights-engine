@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Chatbot, { Message } from '../components/Chatbot';
 import ChatHistorySidebar, { ChatConversation } from '../components/ChatHistorySidebar';
+import { Trash2 } from 'lucide-react';
 
 const STORAGE_KEY_CONVERSATIONS = 'chatbot_conversations';
 const STORAGE_KEY_MESSAGES = 'chatbot_messages_';
@@ -26,7 +27,7 @@ export const ChatbotPage: React.FC = () => {
         stockTickers: conv.stockTickers || [] // Handle old conversations without stockTickers
       }));
       setConversations(convs);
-      
+
       // Set the most recent conversation as active
       if (convs.length > 0) {
         setActiveConversationId(convs[0].id);
@@ -47,7 +48,7 @@ export const ChatbotPage: React.FC = () => {
 
     // Load messages synchronously (localStorage is fast)
     const savedMessages = localStorage.getItem(STORAGE_KEY_MESSAGES + activeConversationId);
-    
+
     if (savedMessages) {
       try {
         const parsed = JSON.parse(savedMessages);
@@ -63,12 +64,12 @@ export const ChatbotPage: React.FC = () => {
         console.error('Error parsing saved messages:', error);
       }
     }
-    
+
     // No saved messages or empty array - show welcome message
     setMessages([{
       id: '1',
       role: 'assistant',
-      content: 'Hello! I\'m your financial AI assistant. I can help you with stock information, market analysis, news, and more. How can I assist you today?',
+      content: 'Hello! I\'m your financial AI assistant. I can summarize latest Finnhub market news, explain things in ELI5 mode, and help with stocks. Ask away.',
       timestamp: new Date()
     }]);
   }, [activeConversationId]);
@@ -93,21 +94,21 @@ export const ChatbotPage: React.FC = () => {
       'MU', 'LRCX', 'KLAC', 'MCHP', 'SWKS', 'QRVO', 'NXPI', 'ON', 'MPWR', 'MRVL',
       'SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'VOO', 'VEA', 'VWO', 'BND', 'AGG'
     ];
-    
+
     const matches = text.match(tickerPattern);
     if (!matches) return [];
-    
+
     const foundTickers = matches
       .filter(ticker => commonTickers.includes(ticker))
       .filter((ticker, index, self) => self.indexOf(ticker) === index); // Remove duplicates
-    
+
     return foundTickers.slice(0, 5); // Limit to 5 tickers
   };
 
   // Generate conversation summary from messages
   const generateConversationSummary = (messages: Message[]): string => {
     const userMessages = messages.filter(msg => msg.role === 'user');
-    
+
     // Don't generate summary if there are no user messages (only welcome message)
     if (userMessages.length === 0) {
       return 'New Chat';
@@ -115,10 +116,10 @@ export const ChatbotPage: React.FC = () => {
 
     // Get first few user messages to create a summary
     const firstMessages = userMessages.slice(0, 3).map(msg => msg.content).join(' ');
-    
+
     // Extract key topics
     const topics: string[] = [];
-    
+
     // Check for stock-related queries
     if (firstMessages.toLowerCase().includes('price') || firstMessages.toLowerCase().includes('stock')) {
       const tickers = extractStockTickers(firstMessages);
@@ -128,22 +129,22 @@ export const ChatbotPage: React.FC = () => {
         topics.push('Stock Price Query');
       }
     }
-    
+
     // Check for market trends
     if (firstMessages.toLowerCase().includes('market') || firstMessages.toLowerCase().includes('trend')) {
       topics.push('Market Trends');
     }
-    
+
     // Check for news
     if (firstMessages.toLowerCase().includes('news') || firstMessages.toLowerCase().includes('latest')) {
       topics.push('Financial News');
     }
-    
+
     // Check for portfolio
     if (firstMessages.toLowerCase().includes('portfolio') || firstMessages.toLowerCase().includes('investment')) {
       topics.push('Portfolio Analysis');
     }
-    
+
     // Check for earnings
     if (firstMessages.toLowerCase().includes('earnings') || firstMessages.toLowerCase().includes('revenue')) {
       topics.push('Earnings Analysis');
@@ -156,37 +157,37 @@ export const ChatbotPage: React.FC = () => {
 
     // Otherwise, create a smart summary from first message
     const firstMessage = userMessages[0].content.trim();
-    
+
     // Remove common question words
     const cleaned = firstMessage
       .replace(/^(what|how|when|where|why|tell me|show me|can you|i want|i need)\s+/i, '')
       .trim();
-    
+
     // Capitalize first letter
     const capitalized = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-    
+
     // Limit length
     if (capitalized.length <= 60) {
       return capitalized;
     }
-    
+
     // Try to cut at a sentence boundary
     const sentenceEnd = capitalized.substring(0, 57).lastIndexOf('.');
     if (sentenceEnd > 30) {
       return capitalized.substring(0, sentenceEnd + 1);
     }
-    
+
     // Cut at word boundary
     const wordEnd = capitalized.substring(0, 57).lastIndexOf(' ');
     if (wordEnd > 30) {
       return capitalized.substring(0, wordEnd) + '...';
     }
-    
+
     return capitalized.substring(0, 57) + '...';
   };
 
   // Create a new chat
-  const createNewChat = () => {
+  const createNewChat = (customConversations?: ChatConversation[]) => {
     // Save current conversation's messages before switching
     if (activeConversationId && messages.length > 0) {
       saveMessages(activeConversationId, messages);
@@ -202,12 +203,13 @@ export const ChatbotPage: React.FC = () => {
       stockTickers: []
     };
 
-    const updatedConversations = [newConversation, ...conversations];
+    const baseConversations = Array.isArray(customConversations) ? customConversations : conversations;
+    const updatedConversations = [newConversation, ...baseConversations];
     saveConversations(updatedConversations);
-    
+
     // Clear messages immediately to prevent old messages from being used
     setMessages([]);
-    
+
     // Set new conversation as active - this will trigger useEffect to load fresh messages
     setActiveConversationId(newId);
   };
@@ -232,16 +234,14 @@ export const ChatbotPage: React.FC = () => {
   // Delete a conversation
   const handleDeleteConversation = (conversationId: string) => {
     const updatedConversations = conversations.filter(conv => conv.id !== conversationId);
-    saveConversations(updatedConversations);
     localStorage.removeItem(STORAGE_KEY_MESSAGES + conversationId);
 
-    // If deleted conversation was active, switch to another or create new
+    // If deleted conversation was active, always create a new empty chat 
+    // to provide the user with a fresh interface immediately.
     if (activeConversationId === conversationId) {
-      if (updatedConversations.length > 0) {
-        setActiveConversationId(updatedConversations[0].id);
-      } else {
-        createNewChat();
-      }
+      createNewChat(updatedConversations);
+    } else {
+      saveConversations(updatedConversations);
     }
   };
 
@@ -252,7 +252,7 @@ export const ChatbotPage: React.FC = () => {
     // Only update if messages actually changed (prevent unnecessary re-renders)
     const currentIds = messages.map(m => m.id).join(',');
     const newIds = newMessages.map(m => m.id).join(',');
-    
+
     if (currentIds !== newIds) {
       setMessages(newMessages);
       saveMessages(activeConversationId, newMessages);
@@ -265,7 +265,7 @@ export const ChatbotPage: React.FC = () => {
     // Use functional update to get latest conversations state
     setConversations((prevConversations) => {
       // Get current conversations from state or localStorage
-      const currentConversations = prevConversations.length > 0 ? prevConversations : 
+      const currentConversations = prevConversations.length > 0 ? prevConversations :
         JSON.parse(localStorage.getItem(STORAGE_KEY_CONVERSATIONS) || '[]').map((conv: any) => ({
           ...conv,
           timestamp: new Date(conv.timestamp),
@@ -287,22 +287,22 @@ export const ChatbotPage: React.FC = () => {
       }
 
       const lastUserMessage = userMessages[userMessages.length - 1];
-      
+
       // Extract stock tickers from all messages
       const allText = newMessages.map(msg => msg.content).join(' ');
       const stockTickers = extractStockTickers(allText);
-      
+
       // Generate summary title - only update if title is still "New Chat"
       const summary = generateConversationSummary(newMessages);
-      
+
       const updatedConversations = currentConversations.map((conv: ChatConversation) => {
         if (conv.id === activeConversationId) {
           // Only update title if it's still "New Chat" to prevent overwriting existing titles
           // Also ensure summary is not "New Chat" (which means no user messages found)
-          const newTitle = (conv.title === 'New Chat' && summary !== 'New Chat') 
-            ? summary 
+          const newTitle = (conv.title === 'New Chat' && summary !== 'New Chat')
+            ? summary
             : conv.title;
-          
+
           return {
             ...conv,
             title: newTitle,
@@ -314,10 +314,10 @@ export const ChatbotPage: React.FC = () => {
         }
         return conv;
       });
-      
+
       // Save to localStorage
       localStorage.setItem(STORAGE_KEY_CONVERSATIONS, JSON.stringify(updatedConversations));
-      
+
       return updatedConversations;
     });
   };
@@ -337,11 +337,23 @@ export const ChatbotPage: React.FC = () => {
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col bg-surface border-l border-border overflow-hidden">
-        <div className="border-b border-border p-4 bg-surface-light">
-          <h1 className="text-2xl font-semibold text-text-primary">Financial AI Assistant</h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Ask me about stocks, market trends, news, or any financial questions
-          </p>
+        <div className="border-b border-border p-4 bg-surface-light flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-semibold text-text-primary">Financial AI Assistant</h1>
+            <p className="text-sm text-text-secondary mt-1">
+              Ask for stocks, latest news summaries, or switch on ELI5 mode for simpler explanations
+            </p>
+          </div>
+          {activeConversationId && (
+            <button
+              onClick={() => handleDeleteConversation(activeConversationId)}
+              className="p-2 hover:bg-negative/10 text-text-secondary hover:text-negative rounded-lg transition-colors group flex items-center gap-2"
+              title="Delete current chat"
+            >
+              <span className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Delete Chat</span>
+              <Trash2 className="w-5 h-5" />
+            </button>
+          )}
         </div>
         <div className="flex-1 overflow-hidden">
           {activeConversationId && (

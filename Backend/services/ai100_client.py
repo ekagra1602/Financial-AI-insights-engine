@@ -456,39 +456,285 @@ def summarize_only(text: str) -> str:
     # Fallback: truncate original text
     return text[:200].strip() + ("..." if len(text) > 200 else "")
 
-
-def get_chat_response(message: str):
-    """
-    Sends a general chat message to Qualcomm AI100.
-    """
+def _call_chat_completion(messages, temperature: float = 0.7, max_tokens: int = 600):
     if not AI100_API_KEY:
-        return "I'm sorry, but I can't answer that right now because my AI brain (API Key) is missing."
+        return None
 
     url = f"{AI100_BASE_URL}/chat/completions"
     headers = {
         "Authorization": f"Bearer {AI100_API_KEY}",
         "Content-Type": "application/json"
     }
-    
     payload = {
         "model": AI100_MODEL,
-        "messages": [
-            {"role": "system", "content": "You are a friendly and wise financial mentor. Your goal is to give clear, actionable advice that feels like a conversation. \n\nStyle Guide:\n- Start with a friendly hook or direct answer, maybe an emoji.\n- Use **Markdown** for formatting.\n- Use numbered headers (e.g., `### 1. Step Name`) for main points.\n- Use bold text for key concepts.\n- Use bullet points for details.\n- Use horizontal rules (`---`) to separate major sections.\n- Keep the tone encouraging but realistic.\n- If the user asks about investing, focus on safety and basics first."},
-            {"role": "user", "content": message}
-        ],
-        "temperature": 0.7,
-        "max_tokens": 600
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens
     }
 
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
-        
         if response.status_code != 200:
-            return f"Error: Unable to reach AI service ({response.status_code})"
-            
+            print(f"AI100 API Error: {response.status_code} - {response.text}")
+            return None
+
         data = response.json()
-        return data['choices'][0]['message']['content']
+        return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"Error in _call_chat_completion: {e}")
+        return None
+
+def get_chat_response(message: str, history=None):
+    """
+    Sends a general chat message to Qualcomm AI100.
+    """
+    if not AI100_API_KEY:
+        return "I'm sorry, but I can't answer that right now because my AI brain (API Key) is missing."
+
+    system_message = {"role": "system", "content": "You are a friendly and wise financial mentor. Your goal is to give clear, actionable advice that feels like a conversation. \n\nStyle Guide:\n- Start with a friendly hook or direct answer, maybe an emoji.\n- Use **Markdown** for formatting.\n- Use numbered headers (e.g., `### 1. Step Name`) for main points.\n- Use bold text for key concepts.\n- Use bullet points for details.\n- Use horizontal rules (`---`) to separate major sections.\n- Keep the tone encouraging but realistic.\n- If the user asks about investing, focus on safety and basics first."}
+    
+    messages = [system_message]
+    
+    # Prepend history if available (limit to last 10 messages to avoid token issues)
+    if history:
+        for m in history[-10:]:
+            # Convert ChatMessage objects/dicts to the required format
+            if isinstance(m, dict):
+                role = m.get('role')
+                content = m.get('content')
+            else:
+                # Handle Pydantic objects or other objects with attributes
+                role = getattr(m, 'role', None)
+                content = getattr(m, 'content', None)
+            
+            if role and content:
+                messages.append({"role": role, "content": content})
+            
+    messages.append({"role": "user", "content": message})
+
+    try:
+        return _call_chat_completion(messages, temperature=0.7, max_tokens=600)
         
     except Exception as e:
         print(f"Error calling AI100 API: {e}")
         return "I'm having trouble connecting to the AI service right now."
+
+
+def simplify_for_eli5(text: str):
+    """
+    Rewrites financial content in simple language suitable for a beginner/ELI5 mode.
+    """
+    if not text:
+        return text
+
+    if not AI100_API_KEY:
+        return f"### ELI5 Version\n{text}"
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You explain finance in simple language for beginners. "
+                "Keep facts accurate, avoid jargon, and use short sentences. "
+                "Use Markdown and keep structure readable."
+            )
+        },
+        {
+            "role": "user",
+            "content": (
+                "Rewrite the following content as Explain Like I'm 5. "
+                "Do not invent facts.\n\n"
+                f"{text}"
+            )
+        }
+    ]
+
+    try:
+        return _call_chat_completion(messages, temperature=0.4, max_tokens=700)
+    except Exception as e:
+        print(f"Error simplifying text for ELI5: {e}")
+        return text
+
+
+def improve_news_summary(summary_markdown: str, ticker: str = ""):
+    """
+    Improve clarity and usefulness of generated news summaries while preserving facts.
+    """
+    if not summary_markdown:
+        return summary_markdown
+
+    if not AI100_API_KEY:
+        return summary_markdown
+
+    ticker_context = ticker or "Market"
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a financial news editor. Rewrite summaries to be clearer and more useful "
+                "for investors without adding new facts."
+            )
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Improve this {ticker_context} news summary.\n"
+                "Requirements:\n"
+                "- Keep every factual claim grounded in the original text\n"
+                "- For each article include: Why it matters, Key risk, and Investor takeaway\n"
+                "- Use concise markdown headings and bullets\n\n"
+                f"{summary_markdown}"
+            )
+        }
+    ]
+
+    try:
+        return _call_chat_completion(messages, temperature=0.35, max_tokens=900)
+    except Exception as e:
+        print(f"Error improving news summary: {e}")
+        return summary_markdown
+
+def generate_aggregated_summary(articles, ticker: str = ""):
+    """
+    Generates a very concise high-level overview of multiple news articles.
+    """
+    if not articles:
+        return None
+    
+    if not AI100_API_KEY:
+        return "I've gathered the latest news for you. Here are the core details."
+
+    ticker_context = ticker or "Market"
+    
+    # Prepare a list of headlines and short summaries for the model
+    context_parts = []
+    for i, art in enumerate(articles[:5], 1):
+        headline = art.get('headline', 'No Headline')
+        summary = art.get('summary', '')
+        context_parts.append(f"{i}. {headline}: {summary[:150]}...")
+    
+    context_text = "\n".join(context_parts)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert financial journalist. Your goal is to provide a single, "
+                "punchy, high-level sentence that summarizes the overall trend from multiple headlines."
+            )
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Based on these {ticker_context} news articles, provide one concise sentence "
+                "starting with 'Overall:' that summarizes the key takeaway.\n\n"
+                f"{context_text}"
+            )
+        }
+    ]
+
+    try:
+        response = _call_chat_completion(messages, temperature=0.3, max_tokens=150)
+        return response.strip()
+    except Exception as e:
+        print(f"Error generating aggregated summary: {e}")
+        return f"I found {len(articles)} recent stories about {ticker_context}."
+
+def extract_ticker_with_ai(message: str):
+    """
+    Uses LLM to extract the primary stock ticker from a user message.
+    Returns only the ticker symbol (e.g., 'AAPL') or 'null'.
+    """
+    if not message or not AI100_API_KEY:
+        return None
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert financial data extractor. Your task is to extract the primary "
+                "US stock ticker mentioned or implied in the user message. "
+                "For companies with widely known non-obvious tickers (e.g., Broadcom is AVGO, Google is GOOGL, Microsoft is MSFT, Apple is AAPL), ensure you return the CORRECT official ticker."
+                "Do NOT guess or create short forms like 'BROAD' for Broadcom. If you are unsure of the official ticker, return 'null'."
+                "Return ONLY the ticker symbol in uppercase characters, with no other text."
+            )
+        },
+        {
+            "role": "user",
+            "content": f"Extract the stock ticker from this message: '{message}'"
+        }
+    ]
+
+    try:
+        response = _call_chat_completion(messages, temperature=0.1, max_tokens=10)
+        ticker = response.strip().upper().replace('$', '')
+        if ticker == 'NULL' or not ticker or len(ticker) > 5:
+            return None
+        return ticker
+    except Exception as e:
+        print(f"Error extracting ticker with AI: {e}")
+        return None
+
+def generate_stock_report(name: str, ticker: str, quote: dict, metrics: dict, news_items=None):
+    """
+    Generates a structured financial report matching the user's request.
+    """
+    if not AI100_API_KEY:
+        return "I'm having trouble connecting to the AI service."
+
+    # Prepare context
+    stats_context = f"""
+    Company: {name} ({ticker})
+    Current Price: ${quote.get('c')}
+    Change: {quote.get('d')} ({quote.get('dp')}%)
+    Range Today: ${quote.get('l')} - ${quote.get('h')}
+    Market Cap: {metrics.get('marketCapitalization') or metrics.get('market_cap', 'N/A')}
+    52 Week range: {metrics.get('52WeekLow')} - {metrics.get('52WeekHigh')}
+    """
+    
+    news_context = ""
+    if news_items:
+        news_context = "Latest News Headlines:\n"
+        for i, art in enumerate(news_items[:3], 1):
+            news_context += f"- {art.get('headline')}\n"
+
+    prompt = f"""
+    Generate a structured financial report for {name} ({ticker}).
+    The report MUST follow this EXACT structure with Markdown:
+
+    ### 🤖 AI Overview
+    [Write a punchy, 2-sentence summary of how the stock is performing right now based on its price change and recent news.]
+
+    ### 📊 Key Financial Highlights
+    - [Highlight 1: e.g., current price trend]
+    - [Highlight 2: e.g., market structure or MCap]
+    - [Highlight 3: e.g., day range analysis]
+
+    ### ⚡ Drivers & Risks
+    - **Driver:** [What is pushing the stock up]
+    - **Risk:** [What investors should watch out for]
+
+    Use this data to inform your response:
+    {stats_context}
+    {news_context}
+    """
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert financial analyst. Your goal is to provide a structured, "
+                "easy-to-read report for investors. Be precise and avoid making up numbers."
+            )
+        },
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+
+    try:
+        return _call_chat_completion(messages, temperature=0.5, max_tokens=700)
+    except Exception as e:
+        print(f"Error generating stock report: {e}")
+        return "Failed to generate report."
