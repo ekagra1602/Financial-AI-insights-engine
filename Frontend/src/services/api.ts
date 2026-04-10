@@ -1,4 +1,4 @@
-import { KeyStatistics, StockSymbol } from "../types";
+import { ChartEvent, KeyStatistics, StockDataPoint, StockEventNewsItem, StockSymbol } from "../types";
 
 const API_BASE_URL = "http://localhost:8000/api/v1";
 
@@ -11,7 +11,7 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
-const historyCache = new Map<string, CacheEntry<any[]>>();
+const historyCache = new Map<string, CacheEntry<{ data: any[]; events: ChartEvent[] }>>();
 const statsCache = new Map<string, CacheEntry<KeyStatistics>>();
 const watchlistCache = new Map<'watchlist', CacheEntry<any[]>>();
 
@@ -262,8 +262,10 @@ export const fetchSimilarNews = async (urlHash: string) => {
   }
 };
 
-export const fetchStockHistory = async (symbol: string, timeframe: string) => {
-  // Check frontend cache first — avoids re-fetching on tab switch
+export const fetchStockHistory = async (
+  symbol: string,
+  timeframe: string
+): Promise<{ data: StockDataPoint[]; events: ChartEvent[] }> => {
   const cacheKey = `${symbol}:${timeframe}`;
   const cached = getCached(historyCache, cacheKey);
   if (cached) {
@@ -277,12 +279,35 @@ export const fetchStockHistory = async (symbol: string, timeframe: string) => {
       throw new Error('Failed to fetch stock history');
     }
     const json = await response.json();
-    setCache(historyCache, cacheKey, json.data);
-    return json.data;
+    const payload = {
+      data: json.data ?? [],
+      events: (json.events ?? []) as ChartEvent[],
+    };
+    setCache(historyCache, cacheKey, payload);
+    return payload;
   } catch (error) {
     console.error('Error fetching stock history:', error);
     throw error;
   }
+};
+
+/** Lazy: only for chart event dates; server uses `stock_event_news` before Finnhub. */
+export const fetchStockEventNews = async (
+  symbol: string,
+  dates: string[],
+  forceRefresh = false
+): Promise<StockEventNewsItem[]> => {
+  if (!dates.length) return [];
+  const params = new URLSearchParams();
+  dates.forEach((d) => params.append('dates', d.slice(0, 10)));
+  if (forceRefresh) params.set('force_refresh', 'true');
+  const response = await fetch(
+    `${API_BASE_URL}/stocks/${encodeURIComponent(symbol)}/event-news?${params.toString()}`
+  );
+  if (!response.ok) {
+    throw new Error('Failed to fetch event news');
+  }
+  return response.json();
 };
 
 export const getWatchlist = async () => {

@@ -62,6 +62,12 @@ except Exception as e:
     print(f"Warning: stock_data router not loaded ({e})")
 
 try:
+    from routers.event_news import router as event_news_router
+    app.include_router(event_news_router, prefix="/api/v1")
+except Exception as e:
+    print(f"Warning: event_news router not loaded ({e})")
+
+try:
     from routers.watchlist import router as watchlist_router
     app.include_router(watchlist_router, prefix="/api/v1")
 except Exception as e:

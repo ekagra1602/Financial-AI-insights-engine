@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Plot from 'react-plotly.js';
-import { fetchStockHistory } from '../services/api';
-import { StockDataPoint } from '../types';
+import { fetchStockHistory, fetchStockEventNews } from '../services/api';
+import { ChartEvent, StockDataPoint } from '../types';
 import { RefreshCw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -17,21 +17,19 @@ const timeframes = ['1D', '5D', '1M', '3M', '1Y', '5Y'];
 
 export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isInWatchlist, onToggleWatchlist }) => {
     const [data, setData] = useState<StockDataPoint[]>([]);
+    const [chartEvents, setChartEvents] = useState<ChartEvent[]>([]);
     const [timeframe, setTimeframe] = useState('1D');
     const [loading, setLoading] = useState(false);
-    // Auto-refresh timer
+    const [eventNewsLoading, setEventNewsLoading] = useState(false);
+    const [eventNews, setEventNews] = useState<Record<string, { headline: string | null; summary: string | null; url: string | null; source: string | null }>>({});
     const intervalRef = useRef<number | null>(null);
 
     const loadData = async () => {
         setLoading(true);
-        // Optional: clear data to show loading screen immediately/explicitly
-        if (data.length > 0) {
-            // Keep old data for transition or empty if strictly desired
-        }
-
         try {
-            const history = await fetchStockHistory(symbol, timeframe);
+            const { data: history, events } = await fetchStockHistory(symbol, timeframe);
             setData(history);
+            setChartEvents(events ?? []);
         } catch (error) {
             console.error("Failed to load stock data", error);
         } finally {
@@ -42,16 +40,47 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
     useEffect(() => {
         loadData();
 
-        // Polling every 5 mins
         if (intervalRef.current) clearInterval(intervalRef.current);
-        intervalRef.current = window.setInterval(loadData, 300000); // 5 mins
+        intervalRef.current = window.setInterval(loadData, 300000);
 
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
     }, [symbol, timeframe]);
 
-    // Determine color + compute change from period open → latest close
+    const eventDatesKey = chartEvents.map((e) => `${e.event_date}:${e.time}`).join('|');
+
+    useEffect(() => {
+        if (!symbol || chartEvents.length === 0) {
+            setEventNews({});
+            return;
+        }
+        const dates = chartEvents.map((e) => e.event_date);
+        let cancelled = false;
+        setEventNewsLoading(true);
+        fetchStockEventNews(symbol, dates)
+            .then((rows) => {
+                if (cancelled) return;
+                const m: Record<string, { headline: string | null; summary: string | null; url: string | null; source: string | null }> = {};
+                for (const r of rows) {
+                    m[r.event_date] = {
+                        headline: r.headline,
+                        summary: r.summary,
+                        url: r.url,
+                        source: r.source,
+                    };
+                }
+                setEventNews(m);
+            })
+            .catch((err) => console.error('Event news fetch failed', err))
+            .finally(() => {
+                if (!cancelled) setEventNewsLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [symbol, eventDatesKey]);
+
     const isPositive = data.length > 0 && (data[data.length - 1].close >= data[0].open);
     const lineColor = isPositive ? '#00c805' : '#ff5000';
 
@@ -63,16 +92,57 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
     const xData = data.map(d => d.time);
     const yData = data.map(d => d.close);
 
-
-    // Calculate dynamic Y-axis range
     const prices = data.map(d => d.close);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
-    const padding = (maxPrice - minPrice) * 0.05; // 5% padding
+    const padding = (maxPrice - minPrice) * 0.05;
 
     const yRange = data.length > 0
         ? [minPrice - padding, maxPrice + padding]
         : undefined;
+
+    const eventHoverLines = chartEvents.map((ev) => {
+        const n = eventNews[ev.event_date];
+        let line = n?.headline?.trim();
+        if (!line) {
+            line = eventNewsLoading ? 'Loading headline…' : (n?.summary?.trim() || 'No article for this date');
+        }
+        return `${ev.label}<br>${line}<br>${ev.pct_change >= 0 ? '+' : ''}${ev.pct_change.toFixed(2)}%`;
+    });
+
+    const plotData: Record<string, unknown>[] = [
+        {
+            x: xData,
+            y: yData,
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: lineColor, width: 2 },
+            fill: 'tozeroy',
+            fillcolor: isPositive ? 'rgba(0, 200, 5, 0.1)' : 'rgba(255, 80, 0, 0.1)',
+            name: 'Price',
+            hovertemplate: '<b>%{y:.2f}</b><extra></extra>',
+        },
+    ];
+
+    if (chartEvents.length > 0) {
+        plotData.push({
+            x: chartEvents.map((e) => e.time),
+            y: chartEvents.map((e) => e.price),
+            type: 'scatter',
+            mode: 'markers+text',
+            name: 'Events',
+            text: chartEvents.map((e) => e.label),
+            textposition: 'top center',
+            textfont: { color: '#aaa', size: 11 },
+            marker: {
+                size: 11,
+                color: 'rgba(0,0,0,0.35)',
+                line: { color: lineColor, width: 2 },
+            },
+            hovertemplate: '%{customdata}<extra></extra>',
+            customdata: eventHoverLines,
+        });
+    }
 
     return (
         <div className="w-full p-4 bg-surface rounded-xl shadow-lg border border-border">
@@ -132,7 +202,6 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
             </div>
 
             <div className="relative w-full h-[340px] sm:h-[380px] lg:h-[440px]">
-                {/* Full overlay: only when we have NO data at all yet */}
                 {(loading && data.length === 0) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-surface/50 backdrop-blur-sm rounded-xl">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mb-2" />
@@ -141,45 +210,28 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
                         </div>
                     </div>
                 )}
-                {/* Small corner spinner: when refreshing but we already have data */}
                 {(loading && data.length > 0) && (
                     <div className="absolute top-2 right-2 z-10">
                         <RefreshCw className="w-4 h-4 animate-spin text-text-secondary" />
                     </div>
                 )}
-                {/* 
-                  NOTE: Plot component needs to be wrapped or size handled carefully 
-                  to fit parent container. 
-                */}
                 <Plot
-                    data={[
-                        {
-                            x: xData,
-                            y: yData,
-                            type: 'scatter',
-                            mode: 'lines',
-                            line: { color: lineColor, width: 2 },
-                            fill: 'tozeroy',
-                            fillcolor: isPositive ? 'rgba(0, 200, 5, 0.1)' : 'rgba(255, 80, 0, 0.1)',
-                        },
-                    ]}
+                    data={plotData}
                     layout={{
                         autosize: true,
                         paper_bgcolor: 'rgba(0,0,0,0)',
                         plot_bgcolor: 'rgba(0,0,0,0)',
                         margin: { l: 40, r: 20, t: 20, b: 40 },
+                        showlegend: false,
                         xaxis: {
                             showgrid: false,
                             zeroline: false,
                             showline: false,
                             color: '#666',
                             tickfont: { color: '#666' },
-                            tickformat: '%b %d %Y %H:%M', // Consistent format with year
-                            // Remove gaps (weekends, nights)
+                            tickformat: '%b %d %Y %H:%M',
                             rangebreaks: [
-                                // Hide weekends for all
                                 { bounds: ['sat', 'mon'] },
-                                // Hide non-trading hours (4pm - 9:30am) ONLY for intraday
                                 ...(['1D', '5D', '1M', '3M'].includes(timeframe) ? [
                                     { bounds: [16, 9.5], pattern: 'hour' as const }
                                 ] : [])
@@ -194,7 +246,7 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
                             range: yRange,
                         },
                         dragmode: false,
-                        hovermode: 'x unified', // Show all traces on hover
+                        hovermode: 'closest',
                         hoverlabel: {
                             bgcolor: '#1E1E1E',
                             bordercolor: '#333',
@@ -206,6 +258,50 @@ export const StockChart: React.FC<StockChartProps> = ({ symbol, companyName, isI
                     config={{ displayModeBar: false }}
                 />
             </div>
+
+            {chartEvents.length > 0 && (
+                <div className="mt-4 border-t border-border pt-4 space-y-2">
+                    <h3 className="text-sm font-semibold text-text-primary">Events &amp; news</h3>
+                    <p className="text-xs text-text-secondary">
+                        Markers show large moves in this range. Headlines load only for these dates (cached separately from the main news feed).
+                    </p>
+                    <ul className="space-y-3">
+                        {chartEvents.map((ev) => {
+                            const n = eventNews[ev.event_date];
+                            return (
+                                <li key={`${ev.event_date}-${ev.label}`} className="text-sm border border-border rounded-lg p-3 bg-surface-light/30">
+                                    <div className="font-medium text-text-primary">
+                                        {ev.label}
+                                        <span className="text-text-secondary font-normal"> · {ev.event_date}</span>
+                                        <span className={clsx('ml-2', ev.pct_change >= 0 ? 'text-positive' : 'text-negative')}>
+                                            {ev.pct_change >= 0 ? '+' : ''}{ev.pct_change.toFixed(2)}%
+                                        </span>
+                                    </div>
+                                    {eventNewsLoading && !n && (
+                                        <div className="text-text-secondary text-xs mt-1 animate-pulse">Loading…</div>
+                                    )}
+                                    {n?.headline && (
+                                        <a
+                                            href={n.url || '#'}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="mt-1 block text-primary hover:underline leading-snug"
+                                        >
+                                            {n.headline}
+                                        </a>
+                                    )}
+                                    {!eventNewsLoading && n && !n.headline && n.summary && (
+                                        <p className="text-text-secondary text-xs mt-1">{n.summary}</p>
+                                    )}
+                                    {n?.source && (
+                                        <span className="text-xs text-text-secondary mt-1 block">{n.source}</span>
+                                    )}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+            )}
 
             <div className="mt-4 text-xs text-center text-text-secondary">
                 Updates every 5 minutes • Data from TwelveData

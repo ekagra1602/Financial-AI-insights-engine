@@ -118,3 +118,35 @@ class SupabaseClient:
         except Exception as e:
             print(f"Error searching similar articles via RPC: {e}")
             return []
+
+    def get_stock_event_news(self, ticker: str, event_date: str) -> Optional[Dict[str, Any]]:
+        """One cached row per (ticker, calendar day) for chart event tooltips."""
+        if not self.client:
+            return None
+        try:
+            t = (ticker or "").strip().upper()
+            d = (event_date or "")[:10]
+            if not t or not d:
+                return None
+            resp = (
+                self.client.table("stock_event_news")
+                .select("*")
+                .eq("ticker", t)
+                .eq("event_date", d)
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                return resp.data[0]
+            return None
+        except Exception as e:
+            print(f"Error fetching stock_event_news: {e}")
+            return None
+
+    def upsert_stock_event_news(self, row: Dict[str, Any]):
+        if not self.client:
+            return
+        try:
+            self.client.table("stock_event_news").upsert(row, on_conflict="ticker,event_date").execute()
+        except Exception as e:
+            print(f"Error upserting stock_event_news: {e}")
