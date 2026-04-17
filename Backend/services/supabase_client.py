@@ -149,6 +149,39 @@ class SupabaseClient:
             print(f"Error fetching recent articles from Supabase: {e}")
             return []
 
+    def get_sentiment_report(self, ticker: str, horizon: str) -> Optional[Dict[str, Any]]:
+        """Return the most recent non-expired sentiment report for ticker + horizon."""
+        if not self.client:
+            return None
+        try:
+            now = datetime.datetime.utcnow().isoformat()
+            response = (
+                self.client
+                .table("sentiment_reports")
+                .select("*")
+                .eq("ticker", ticker)
+                .eq("horizon", horizon)
+                .gt("expires_at", now)
+                .order("generated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if response.data:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"Error fetching sentiment report from Supabase: {e}")
+            return None
+
+    def save_sentiment_report(self, record: Dict[str, Any]):
+        """Insert a new sentiment report row."""
+        if not self.client:
+            return
+        try:
+            self.client.table("sentiment_reports").insert(record).execute()
+        except Exception as e:
+            print(f"Error saving sentiment report to Supabase: {e}")
+
     def save_embedding(self, url_hash: str, embedding: list):
         """
         Updates an article with its vector embedding.

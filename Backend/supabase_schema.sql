@@ -88,3 +88,34 @@ ON financial_metadata FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "Enable update for financial_metadata"
 ON financial_metadata FOR UPDATE USING (true);
+
+-- ============================================================
+-- sentiment_reports table
+-- Caches generated sentiment reports per (ticker, horizon)
+-- TTL enforced at application layer (24h)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS sentiment_reports (
+    id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    ticker              TEXT NOT NULL,
+    horizon             TEXT NOT NULL,           -- '1D' | '1W' | '1M' | '3M' | '6M'
+    stance              TEXT,                    -- 'bullish' | 'neutral' | 'bearish'
+    probability_up      FLOAT,
+    confidence_score    FLOAT,
+    report              JSONB NOT NULL DEFAULT '{}',
+    generated_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at          TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_sentiment_reports_ticker
+    ON sentiment_reports(ticker);
+
+CREATE INDEX IF NOT EXISTS idx_sentiment_reports_ticker_horizon
+    ON sentiment_reports(ticker, horizon, generated_at DESC);
+
+ALTER TABLE sentiment_reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Public sentiment_reports viewable by everyone"
+ON sentiment_reports FOR SELECT USING (true);
+
+CREATE POLICY "Enable insert for sentiment_reports"
+ON sentiment_reports FOR INSERT WITH CHECK (true);

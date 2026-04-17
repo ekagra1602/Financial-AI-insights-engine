@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 from services.financial_data_service import FinancialDataService
+from services.sentiment_engine import SentimentEngine
 
 router = APIRouter()
 financial_data_service = FinancialDataService()
+sentiment_engine = SentimentEngine()
 
 
 @router.post("/sentiment/ingest/{ticker}", tags=["Sentiment"])
@@ -15,7 +17,6 @@ async def ingest_financial_data(
     """
     Trigger financial data ingestion for a ticker.
     Fetches quarterly/annual financials from Finnhub, normalizes, and stores in Supabase.
-    Uses POST because this endpoint writes to the database.
     """
     ticker = ticker.upper()
 
@@ -46,7 +47,6 @@ async def get_financial_data(
     """
     Retrieve stored financial metadata rows for a ticker from Supabase.
     Returns rows sorted by period_end_date descending.
-    Each row includes financials, key_metrics, eps_data, and llm_input.
     """
     ticker = ticker.upper()
 
@@ -67,7 +67,6 @@ async def get_llm_input(
 ):
     """
     Returns the structured LLM input JSON for the most recent stored period.
-    This is the primary output consumed by Sprint 8/9 sentiment generation.
     Returns 404 if no data has been ingested yet for this ticker.
     """
     ticker = ticker.upper()
@@ -82,5 +81,29 @@ async def get_llm_input(
         return llm_input
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sentiment/report/{ticker}", tags=["Sentiment"])
+async def get_sentiment_report(
+    ticker: str,
+    horizon: str = Query(default="1M", description="Forecast horizon: 1D, 1W, 1M, 3M, 6M"),
+):
+    """
+    Generate (or return cached) a full sentiment report for a ticker.
+    Runs financial ingestion, news sentiment scoring, and Llama 3.1 8B qualitative analysis.
+    Reports are cached in Supabase for 24 hours.
+    """
+    ticker = ticker.upper()
+    valid_horizons = {"1D", "1W", "1M", "3M", "6M"}
+    if horizon not in valid_horizons:
+        raise HTTPException(status_code=400, detail=f"horizon must be one of {sorted(valid_horizons)}")
+
+    try:
+        report = sentiment_engine.generate_report(ticker=ticker, horizon=horizon)
+        return report
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

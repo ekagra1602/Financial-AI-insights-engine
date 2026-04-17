@@ -1,4 +1,4 @@
-import { ChartEvent, KeyStatistics, StockDataPoint, StockEventNewsItem, StockSymbol } from "../types";
+import { ChartEvent, KeyStatistics, StockDataPoint, StockEventNewsItem, StockSymbol, SentimentReport } from "../types";
 
 const API_BASE_URL = "http://localhost:8000/api/v1";
 
@@ -336,6 +336,22 @@ export const removeFromWatchlist = async (symbol: string) => {
     method: 'DELETE'
   });
   invalidateWatchlistCache();
+};
+
+// ===== Sentiment Reports =====
+
+export const fetchSentimentReport = async (
+  ticker: string,
+  horizon: string = '1M'
+): Promise<SentimentReport> => {
+  const response = await fetch(
+    `${API_BASE_URL}/sentiment/report/${ticker}?horizon=${horizon}`
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch sentiment report for ${ticker}`);
+  }
+  return response.json();
 };
 
 // ===== Notifications =====

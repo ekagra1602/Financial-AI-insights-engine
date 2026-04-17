@@ -137,6 +137,40 @@ export interface ModelBreakdown {
   contribution: number;
 }
 
+export interface RiskFlag {
+  id: string;
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+}
+
+export interface TopDriver {
+  id: string;
+  factor: string;
+  impact: number;
+  description: string;
+}
+
+export interface SentimentReport {
+  ticker: string;
+  companyName: string;
+  horizon: ForecastHorizon;
+  generatedAt: string;
+  forecast: {
+    sentimentScore: number;
+    expectedReturn: number;
+    quantiles: ForecastQuantiles;
+  };
+  risk: {
+    flags: RiskFlag[];
+    topDrivers: TopDriver[];
+    confidenceScore: number;
+  };
+  narrative: {
+    stance: Stance;
+    explanation: string;
+  };
+}
+
 export interface ReminderCondition {
   type: ReminderConditionType;
   targetPrice?: number;

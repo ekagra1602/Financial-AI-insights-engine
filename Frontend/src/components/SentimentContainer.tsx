@@ -5,7 +5,7 @@ import EmptyState from './EmptyState';
 import ErrorMessage from './ErrorMessage';
 import { Search, TrendingUp } from 'lucide-react';
 import { SentimentReport as SentimentReportType, ForecastHorizon } from '../types';
-import { demoReports } from '../data/sentimentData';
+import { fetchSentimentReport } from '../services/api';
 
 interface SentimentContainerProps {
   ticker: string | null;
@@ -18,28 +18,15 @@ const SentimentContainer = ({ ticker }: SentimentContainerProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Simulate fetching a report
   const fetchReport = async (searchTicker: string, horizon: ForecastHorizon = '1M') => {
     setIsLoading(true);
     setError(null);
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
     try {
-      // In a real app, this would be an API call
-      const report = demoReports[searchTicker];
-      
-      if (report) {
-        // Update the horizon in the report
-        setCurrentReport({ ...report, horizon });
-      } else {
-        // If ticker not found in demo data, show error
-        setError(`No report available for ${searchTicker}. Try AAPL, GOOGL, or MSFT.`);
-        setCurrentReport(null);
-      }
-    } catch (err) {
-      setError('Failed to fetch report. Please try again.');
+      const report = await fetchSentimentReport(searchTicker, horizon);
+      setCurrentReport(report);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch report. Please try again.');
       setCurrentReport(null);
     } finally {
       setIsLoading(false);
