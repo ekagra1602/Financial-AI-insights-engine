@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 from services.financial_data_service import FinancialDataService
@@ -89,11 +90,15 @@ async def get_llm_input(
 async def get_sentiment_report(
     ticker: str,
     horizon: str = Query(default="1M", description="Forecast horizon: 1D, 1W, 1M, 3M, 6M"),
+    force_refresh: bool = Query(default=False, description="Bypass 24-hour Supabase cache and regenerate the report"),
 ):
     """
     Generate (or return cached) a full sentiment report for a ticker.
-    Runs financial ingestion, news sentiment scoring, and Llama 3.1 8B qualitative analysis.
-    Reports are cached in Supabase for 24 hours.
+    Runs financial ingestion, news sentiment scoring, and LLM qualitative analysis.
+    Reports are cached in Supabase for 24 hours unless force_refresh=true.
+
+    All blocking I/O (Finnhub API calls, LLM call) runs in a thread pool via
+    asyncio.to_thread so the event loop is never blocked.
     """
     ticker = ticker.upper()
     valid_horizons = {"1D", "1W", "1M", "3M", "6M"}
@@ -101,7 +106,12 @@ async def get_sentiment_report(
         raise HTTPException(status_code=400, detail=f"horizon must be one of {sorted(valid_horizons)}")
 
     try:
-        report = sentiment_engine.generate_report(ticker=ticker, horizon=horizon)
+        report = await asyncio.to_thread(
+            sentiment_engine.generate_report,
+            ticker,
+            horizon,
+            force_refresh,
+        )
         return report
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

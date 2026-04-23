@@ -154,7 +154,7 @@ class SupabaseClient:
         if not self.client:
             return None
         try:
-            now = datetime.datetime.utcnow().isoformat()
+            now = datetime.datetime.now(datetime.timezone.utc).isoformat()
             response = (
                 self.client
                 .table("sentiment_reports")

@@ -17,7 +17,6 @@ HORIZON_MONTHS = {
 }
 
 # How far back to look for news articles per horizon.
-# Shorter horizons need recent signals; longer horizons need broader context.
 HORIZON_LOOKBACK_DAYS = {
     "1D": 2,
     "1W": 7,
@@ -27,7 +26,6 @@ HORIZON_LOOKBACK_DAYS = {
 }
 
 # Horizon-specific reasoning guidance injected into the LLM prompt.
-# Steers the qualitative narrative without asking the LLM to compute numbers.
 HORIZON_GUIDANCE = {
     "1D": (
         "This is a SHORT-TERM (1-day) outlook. Focus ONLY on immediate news catalysts from the last 24-48 hours, "
@@ -53,6 +51,15 @@ HORIZON_GUIDANCE = {
     ),
 }
 
+# Longer horizons are inherently harder to predict → lower base confidence.
+HORIZON_CONFIDENCE_ADJUSTMENT = {
+    "1D": +5,
+    "1W": +3,
+    "1M": 0,
+    "3M": -3,
+    "6M": -7,
+}
+
 
 class SentimentEngine:
     def __init__(self):
@@ -63,17 +70,19 @@ class SentimentEngine:
     # Public API                                                           #
     # ------------------------------------------------------------------ #
 
-    def generate_report(self, ticker: str, horizon: str = "1M") -> Dict[str, Any]:
+    def generate_report(self, ticker: str, horizon: str = "1M", force_refresh: bool = False) -> Dict[str, Any]:
         """
         Main entry point. Returns a complete SentimentReport dict matching
-        the frontend's TypeScript type. Cached in Supabase for 24 hours.
+        the frontend TypeScript type. Cached in Supabase for 24 hours.
+        Pass force_refresh=True to bypass the cache and regenerate.
         """
         ticker = ticker.upper()
 
-        # 1. Return cached report if still valid
-        cached = self.supabase.get_sentiment_report(ticker, horizon)
-        if cached:
-            return cached["report"]
+        # 1. Return cached report if still valid (skipped when force_refresh=True)
+        if not force_refresh:
+            cached = self.supabase.get_sentiment_report(ticker, horizon)
+            if cached:
+                return cached["report"]
 
         # 2. Ensure financial data is ingested (7-day cache inside ingest_ticker)
         self.financial_service.ingest_ticker(ticker, period_type="quarterly", num_periods=4)
@@ -82,13 +91,14 @@ class SentimentEngine:
         if not llm_input:
             raise ValueError(f"No financial data available for {ticker}. Ingestion may have failed.")
 
-        # 3. News sentiment score from Supabase (horizon-aware lookback window)
-        news_score, news_summary, article_count = self._compute_news_score(ticker, horizon)
+        # 3. News sentiment score (horizon-aware lookback window)
+        news_score, news_summary = self._compute_news_score(ticker, horizon)
+        article_count = getattr(self, "_last_article_count", 0)
 
-        # 4. Financial score from llm_input
+        # 4. Financial score (deterministic, horizon-independent)
         financial_score = self._compute_financial_score(llm_input)
 
-        # 5. Sentiment score (weighted average, horizon-independent by design)
+        # 5. Sentiment score (weighted average)
         sentiment_score = round(0.55 * financial_score + 0.45 * news_score, 1)
 
         # 6. Quantiles and expected return (horizon-dependent)
@@ -134,7 +144,7 @@ class SentimentEngine:
             "horizon": horizon,
             "report": report,
             "stance": llm_result.get("stance", "neutral"),
-            "probability_up": sentiment_score,
+            "probability_up": round(sentiment_score / 100, 4),  # stored as 0–1 probability
             "confidence_score": confidence_score,
             "expires_at": expires_at.isoformat(),
         })
@@ -150,15 +160,13 @@ class SentimentEngine:
         Fetch recent news from Supabase using a horizon-aware lookback window
         and compute a 0-100 sentiment score.
 
-        Shorter horizons (1D/1W) use only the most recent articles so the score
-        reflects immediate market sentiment. Longer horizons (3M/6M) use a wider
-        window to capture the broader sentiment arc.
-
         Falls back to the 20 most recent articles (no date filter) if fewer than
-        3 articles are found within the horizon window — preventing an artificially
-        neutral score from data sparsity.
+        3 articles are found within the horizon window. When the fallback fires,
+        the summary string correctly reflects that the date filter was relaxed
+        rather than falsely claiming the articles are within the window.
 
-        Returns (score, human-readable summary string, article_count).
+        Returns (score, human-readable summary string).
+        Article count is stored in self._last_article_count for use by generate_report.
         """
         lookback_days = HORIZON_LOOKBACK_DAYS.get(horizon, 30)
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=lookback_days)
@@ -166,13 +174,14 @@ class SentimentEngine:
 
         articles = self.supabase.get_recent_articles(ticker=ticker, limit=50, from_date=from_date)
 
-        # Fallback: if the horizon window is too narrow and returns too few articles,
-        # use the 20 most recent regardless of date so the score isn't artificially neutral.
+        fallback_used = False
         if len(articles) < 3:
             articles = self.supabase.get_recent_articles(ticker=ticker, limit=20)
+            fallback_used = True
 
         if not articles:
-            return 50.0, "No recent news available for this ticker.", 0
+            self._last_article_count = 0
+            return 50.0, "No recent news available for this ticker."
 
         positive = sum(1 for a in articles if a.get("sentiment") == "positive")
         negative = sum(1 for a in articles if a.get("sentiment") == "negative")
@@ -181,25 +190,37 @@ class SentimentEngine:
         score = 50 + (positive - negative) / len(articles) * 50
         score = round(max(0.0, min(100.0, score)), 1)
 
-        summary = (
-            f"{positive} positive, {negative} negative, {neutral_count} neutral "
-            f"out of {len(articles)} news articles (last {lookback_days} days)."
-        )
-        return score, summary, len(articles)
+        if fallback_used:
+            summary = (
+                f"{positive} positive, {negative} negative, {neutral_count} neutral "
+                f"out of {len(articles)} most recent news articles "
+                f"(date window too narrow for {horizon} horizon — extended to all available)."
+            )
+        else:
+            summary = (
+                f"{positive} positive, {negative} negative, {neutral_count} neutral "
+                f"out of {len(articles)} news articles (last {lookback_days} days)."
+            )
+        self._last_article_count = len(articles)
+        return score, summary
 
     def _compute_financial_score(self, llm_input: Dict[str, Any]) -> float:
         """
         Deterministic scoring from llm_input growth/risk/valuation signals.
         Base = 50, adjusted by each signal, clamped to [0, 100].
+
+        All signals are bidirectional (beats add, misses subtract).
+        Outlier Finnhub values (e.g., 10,000% revenue growth for newly-public
+        companies with a tiny prior-period base) are guarded with abs() checks.
         """
         score = 50.0
         g = llm_input.get("growth_signals", {})
         r = llm_input.get("risk_signals", {})
         v = llm_input.get("valuation_snapshot", {})
 
-        # Revenue growth
+        # Revenue growth — guard Finnhub outliers (> 1000% is likely data noise)
         rev_yoy = g.get("revenue_yoy_pct")
-        if rev_yoy is not None:
+        if rev_yoy is not None and abs(rev_yoy) < 1000:
             if rev_yoy > 15:
                 score += 25
             elif rev_yoy > 5:
@@ -209,24 +230,34 @@ class SentimentEngine:
             else:
                 score -= 15
 
-        # EPS beat
-        if g.get("eps_beat"):
+        # EPS beat — both directions scored (miss is no longer neutral)
+        eps_beat = g.get("eps_beat")
+        if eps_beat is True:
             score += 20
+        elif eps_beat is False:
+            score -= 15
 
+        # EPS beat rate over trailing 4 quarters — both directions scored
         beat_rate = g.get("eps_beat_rate_4q")
         if beat_rate is not None:
             if beat_rate > 0.75:
                 score += 15
             elif beat_rate > 0.5:
                 score += 10
+            elif beat_rate < 0.5:
+                score -= 10
 
+        # EPS surprise magnitude — both directions scored, guard outliers
         eps_surprise = g.get("eps_surprise_pct")
-        if eps_surprise is not None and eps_surprise > 5:
-            score += 10
+        if eps_surprise is not None and abs(eps_surprise) < 500:
+            if eps_surprise > 5:
+                score += 10
+            elif eps_surprise < -5:
+                score -= 10
 
-        # Valuation
+        # Valuation — negative P/E means negative earnings; ratio is meaningless
         pe = v.get("pe_ttm")
-        if pe is not None:
+        if pe is not None and pe > 0:
             if pe < 15:
                 score += 10
             elif pe > 40:
@@ -242,34 +273,38 @@ class SentimentEngine:
         if de_ratio is not None and de_ratio > 2:
             score -= 10
 
-        # 52-week range position
-        range_52w = r.get("52w_range_pct")
-        if range_52w is not None:
-            if range_52w < 20:
-                score += 10  # Near 52w low — potential upside
-            elif range_52w > 80:
-                score -= 5   # Near 52w high — overbought risk
+        # 52-week range position (0% = at annual low, 100% = at annual high)
+        range_pct = r.get("52w_range_pct")
+        if range_pct is not None and 0 <= range_pct <= 100:
+            if range_pct < 20:
+                score += 10   # near annual low — potential upside
+            elif range_pct > 80:
+                score -= 5    # near annual high — overbought risk
 
         return round(max(0.0, min(100.0, score)), 1)
 
     def _compute_confidence_score(self, llm_input: Dict[str, Any], article_count: int, horizon: str) -> int:
         """
-        Deterministic confidence score (50-95). No LLM involvement.
+        Deterministic confidence score [50, 95]. No LLM involvement.
 
         Factors:
-        - News data volume within the horizon window (more articles = higher confidence)
+        - Forecast horizon (longer = harder to predict = lower base)
+        - News data volume within the horizon window
         - EPS beat consistency over last 4 quarters
-        - Beta (high volatility = harder to predict = lower confidence)
-        - Financial data completeness (missing fields reduce confidence)
+        - Beta (high volatility = harder to predict)
+        - Financial data completeness (via pre-computed quality_flags)
         """
         score = 70.0
 
-        # News data quality within the horizon window
+        # Horizon adjustment — longer forecasts are inherently less certain
+        score += HORIZON_CONFIDENCE_ADJUSTMENT.get(horizon, 0)
+
+        # News data volume within the horizon window
         if article_count >= 10:
             score += 10
         elif article_count >= 5:
             score += 5
-        elif article_count == 0:
+        elif article_count <= 1:
             score -= 10
 
         # EPS beat consistency
@@ -283,7 +318,7 @@ class SentimentEngine:
             else:
                 score -= 5
 
-        # Volatility — high beta means more uncertainty
+        # Volatility — high beta means more uncertainty in predictions
         r = llm_input.get("risk_signals", {})
         beta = r.get("beta")
         if beta is not None:
@@ -294,13 +329,15 @@ class SentimentEngine:
             elif beta < 0.8:
                 score += 5
 
-        # Financial data completeness
-        if g.get("revenue_yoy_pct") is None:
-            score -= 5
-        if g.get("eps_beat") is None:
-            score -= 3
-        if llm_input.get("valuation_snapshot", {}).get("pe_ttm") is None:
-            score -= 3
+        # Financial data completeness — use pre-computed score covering 8 fields
+        completeness = llm_input.get("quality_flags", {}).get("data_completeness_pct")
+        if completeness is not None:
+            if completeness < 50:
+                score -= 12
+            elif completeness < 75:
+                score -= 6
+            elif completeness < 100:
+                score -= 2
 
         return int(round(max(50, min(95, score))))
 
@@ -310,8 +347,8 @@ class SentimentEngine:
 
     def _call_llm(self, llm_input: Dict[str, Any], news_summary: str, horizon: str) -> Dict[str, Any]:
         """
-        Call Llama 3.1 8B via AI100 for qualitative narrative, drivers, and risk flags.
-        Falls back to _fallback_result() if the API is unavailable.
+        Call Llama via AI100 for qualitative narrative, drivers, and risk flags.
+        Retries once on transient failure before falling back to _fallback_result().
         """
         if not ai100_client.AI100_API_KEY:
             return self._fallback_result(llm_input)
@@ -380,18 +417,22 @@ Rules:
             ],
             "temperature": 0.3,
             "max_tokens": 800,
+            "tool_choice": "none",
         }
 
-        try:
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
-            if response.status_code == 200:
-                content = response.json()["choices"][0]["message"].get("content", "")
-                if content:
-                    cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
-                    return self._parse_llm_response(cleaned)
-            print(f"[SentimentEngine] LLM returned HTTP {response.status_code}")
-        except Exception as e:
-            print(f"[SentimentEngine] LLM call failed: {e}")
+        for attempt in range(1, 3):
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=60)
+                if response.status_code == 200:
+                    content = response.json()["choices"][0]["message"].get("content", "")
+                    if content:
+                        cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+                        parsed = self._parse_llm_response(cleaned)
+                        if parsed.get("stance"):
+                            return parsed
+                print(f"[SentimentEngine] Attempt {attempt}: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"[SentimentEngine] Attempt {attempt}: {e}")
 
         return self._fallback_result(llm_input)
 
@@ -405,7 +446,7 @@ Rules:
 
         # Explanation
         m = re.search(
-            r"EXPLANATION:\s*(.+?)(?=\nDRIVER_|\nRISK_|\nCONFIDENCE:|$)",
+            r"EXPLANATION:\s*(.+?)(?=\nDRIVER_|\nRISK_|$)",
             raw, re.DOTALL | re.IGNORECASE,
         )
         result["explanation"] = m.group(1).strip() if m else ""
@@ -442,23 +483,41 @@ Rules:
                 })
         result["risk_flags"] = flags
 
+        # Confidence (LLM-reported; not used by generate_report which computes it deterministically)
+        m = re.search(r"CONFIDENCE:\s*(\d+)", raw, re.IGNORECASE)
+        result["confidence"] = int(m.group(1)) if m else 70
+
         return result
 
     def _fallback_result(self, llm_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Return a minimal valid result when LLM is unavailable."""
+        """
+        Return a minimal valid result when LLM is unavailable.
+        Stance is derived from fundamentals so bearish is possible.
+        """
         g = llm_input.get("growth_signals", {})
-        stance = "bullish" if g.get("eps_beat") else "neutral"
+        eps_beat = g.get("eps_beat")
+        beat_rate = g.get("eps_beat_rate_4q")
+        rev_yoy = g.get("revenue_yoy_pct")
+
+        if eps_beat is True and (beat_rate is None or beat_rate >= 0.5):
+            stance = "bullish"
+        elif eps_beat is False and rev_yoy is not None and rev_yoy < 0:
+            stance = "bearish"
+        elif beat_rate is not None and beat_rate < 0.25:
+            stance = "bearish"
+        else:
+            stance = "neutral"
+
         company = llm_input.get("company_name", "This company")
+        sentiment_word = {"bullish": "positive", "bearish": "negative", "neutral": "mixed"}[stance]
         return {
             "stance": stance,
             "explanation": (
-                f"{company} shows {'positive' if stance == 'bullish' else 'mixed'} financial signals "
-                f"based on recent earnings data. Full LLM analysis is currently unavailable."
+                f"{company} shows {sentiment_word} financial signals "
+                f"based on recent earnings and revenue data. Full LLM analysis is currently unavailable."
             ),
             "drivers": [],
             "risk_flags": [
                 {"id": "rf1", "severity": "medium", "message": "LLM analysis unavailable — using rule-based fallback"}
             ],
-            "confidence": 55,
         }
-

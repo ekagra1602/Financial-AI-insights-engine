@@ -10,6 +10,7 @@ from services.finnhub_client import (
     get_stock_earnings,
     get_finnhub_metric,
     get_finnhub_profile,
+    get_finnhub_quote,
 )
 from services.supabase_client import SupabaseClient
 
@@ -37,8 +38,26 @@ class FinancialDataService:
         """
         Main entry point. Fetches Finnhub data, normalizes, stores, and returns
         a summary of what was ingested.
+
+        Fast path: if all num_periods rows are already fresh in Supabase (< 7 days
+        old), skips all Finnhub API calls entirely and returns immediately.
         """
         ticker = ticker.upper()
+
+        # Fast path: skip Finnhub calls if all requested periods are already fresh
+        existing = self.supabase.get_financial_metadata(ticker, period_type, limit=num_periods)
+        if len(existing) >= num_periods and all(
+            self._age_days(r.get("updated_at")) < 7 for r in existing
+        ):
+            return {
+                "ticker": ticker,
+                "periods_processed": 0,
+                "periods_cached": num_periods,
+                "period_keys": [r["period_key"] for r in existing],
+                "status": "success",
+                "errors": [],
+            }
+
         result = {
             "ticker": ticker,
             "periods_processed": 0,
@@ -48,7 +67,7 @@ class FinancialDataService:
             "errors": []
         }
 
-        # Fetch all three Finnhub sources
+        # Fetch all Finnhub sources
         try:
             raw_financials = get_financials_reported(ticker, freq=period_type)
         except Exception as e:
@@ -72,6 +91,15 @@ class FinancialDataService:
         except Exception as e:
             raw_profile = {}
             result["errors"].append(f"profile: {str(e)}")
+
+        try:
+            raw_quote = get_finnhub_quote(ticker)
+        except Exception as e:
+            raw_quote = {}
+            result["errors"].append(f"quote: {str(e)}")
+
+        # Current price for 52-week range position calculation
+        current_price = raw_quote.get("c") if isinstance(raw_quote, dict) else None
 
         # Extract list of reported periods (newest first), capped at num_periods
         reports = raw_financials.get("data", [])
@@ -118,6 +146,7 @@ class FinancialDataService:
                 financials=financials,
                 key_metrics=key_metrics,
                 eps_data=eps_data,
+                current_price=current_price,
             )
 
             record = {
@@ -159,7 +188,7 @@ class FinancialDataService:
     ) -> Optional[Dict[str, Any]]:
         """
         Returns just the llm_input from the most recent stored period.
-        Primary output consumed by Sprint 8/9 sentiment generation.
+        Primary output consumed by sentiment generation.
         """
         rows = self.supabase.get_financial_metadata(ticker.upper(), period_type, limit=1)
         if rows:
@@ -249,6 +278,8 @@ class FinancialDataService:
         }
 
         operating_cf = safe(cf, "NetCashProvidedByUsedInOperatingActivities")
+        # Finnhub reports PaymentsToAcquirePropertyPlantAndEquipment as a negative value
+        # (cash outflow). Adding it to operating_cf gives: FCF = operating_cf - |capex|.
         capex = safe(cf,
             "PaymentsToAcquirePropertyPlantAndEquipment",
             "CapitalExpendituresIncurredButNotYetPaid",
@@ -305,7 +336,7 @@ class FinancialDataService:
                 "gross_margin_ttm":     s("grossMarginTTM"),
                 "operating_margin_ttm": s("operatingMarginTTM"),
                 "net_margin_ttm":       s("netProfitMarginTTM"),
-                "roa_ttm":              s("roa5Y"),
+                "roa_5y":               s("roa5Y"),   # 5-year average ROA (not TTM)
                 "roe_ttm":              s("roeTTM"),
                 "roic_ttm":             s("roicTTM"),
             },
@@ -393,10 +424,11 @@ class FinancialDataService:
         financials: Dict[str, Any],
         key_metrics: Dict[str, Any],
         eps_data: Dict[str, Any],
+        current_price: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Assemble the structured LLM input JSON — the pre-computed context block
-        passed directly to the sentiment LLM in Sprints 8 and 9.
+        passed directly to the sentiment LLM.
         """
         ic  = financials.get("income_statement", {})
         bs  = financials.get("balance_sheet", {})
@@ -406,12 +438,14 @@ class FinancialDataService:
         mkt = key_metrics.get("market", {})
         grw = key_metrics.get("growth", {})
 
-        # 52-week range as a percentage span
+        # 52-week range POSITION: 0% = at annual low, 100% = at annual high.
+        # Requires current_price from the live Finnhub quote.
         high_52w = mkt.get("52_week_high")
         low_52w  = mkt.get("52_week_low")
         range_52w_pct = None
-        if high_52w and low_52w and low_52w != 0:
-            range_52w_pct = round(((high_52w - low_52w) / low_52w) * 100, 1)
+        if high_52w and low_52w and current_price and (high_52w - low_52w) > 0:
+            raw_pos = (current_price - low_52w) / (high_52w - low_52w) * 100
+            range_52w_pct = round(max(0.0, min(100.0, raw_pos)), 1)
 
         market_cap = mkt.get("market_cap")
         market_cap_b = round(market_cap / 1000, 2) if market_cap else None
@@ -463,7 +497,7 @@ class FinancialDataService:
                 "debt_equity_ratio": liq.get("debt_equity_ratio"),
                 "current_ratio":     liq.get("current_ratio"),
                 "beta":              mkt.get("beta"),
-                "52w_range_pct":     range_52w_pct,
+                "52w_range_pct":     range_52w_pct,  # position within annual range (0–100%)
             },
 
             "quality_flags": {

@@ -201,26 +201,32 @@ const SentimentReport = ({
             Forecast Range
           </h2>
           <div className="space-y-4">
-            {[
-              { label: 'Pessimistic (10th percentile)', value: report.forecast.quantiles?.q10 ?? 0 },
-              { label: 'Expected (50th percentile)',    value: report.forecast.quantiles?.q50 ?? 0 },
-              { label: 'Optimistic (90th percentile)',  value: report.forecast.quantiles?.q90 ?? 0 },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-text-secondary text-sm">{label}</span>
-                  <span className={`font-bold ${value >= 0 ? 'text-positive' : 'text-negative'}`}>
-                    {value >= 0 ? '+' : ''}{value.toFixed(2)}%
-                  </span>
+            {(() => {
+              const quantiles = [
+                { label: 'Pessimistic (10th percentile)', value: report.forecast.quantiles?.q10 ?? 0 },
+                { label: 'Expected (50th percentile)',    value: report.forecast.quantiles?.q50 ?? 0 },
+                { label: 'Optimistic (90th percentile)',  value: report.forecast.quantiles?.q90 ?? 0 },
+              ];
+              // Normalize bar widths against the largest absolute value so bars
+              // always differentiate visually regardless of return magnitude.
+              const maxAbs = Math.max(...quantiles.map(q => Math.abs(q.value)), 0.01);
+              return quantiles.map(({ label, value }) => (
+                <div key={label}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-text-secondary text-sm">{label}</span>
+                    <span className={`font-bold ${value >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      {value >= 0 ? '+' : ''}{value.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-background rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${value >= 0 ? 'bg-positive' : 'bg-negative'}`}
+                      style={{ width: `${Math.min((Math.abs(value) / maxAbs) * 100, 100)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-background rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${value >= 0 ? 'bg-positive' : 'bg-negative'}`}
-                    style={{ width: `${Math.min(Math.abs(value) * 5, 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         </div>
 

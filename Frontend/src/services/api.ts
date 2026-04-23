@@ -14,6 +14,8 @@ interface CacheEntry<T> {
 const historyCache = new Map<string, CacheEntry<{ data: any[]; events: ChartEvent[] }>>();
 const statsCache = new Map<string, CacheEntry<KeyStatistics>>();
 const watchlistCache = new Map<'watchlist', CacheEntry<any[]>>();
+const sentimentCache = new Map<string, CacheEntry<SentimentReport>>();
+const SENTIMENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes client-side TTL
 
 export function invalidateWatchlistCache() {
   watchlistCache.delete('watchlist');
@@ -342,16 +344,46 @@ export const removeFromWatchlist = async (symbol: string) => {
 
 export const fetchSentimentReport = async (
   ticker: string,
-  horizon: string = '1M'
+  horizon: string = '1M',
+  forceRefresh: boolean = false,
 ): Promise<SentimentReport> => {
-  const response = await fetch(
-    `${API_BASE_URL}/sentiment/report/${ticker}?horizon=${horizon}`
-  );
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch sentiment report for ${ticker}`);
+  const cacheKey = `${ticker}:${horizon}`;
+
+  // Return client-side cached result unless forceRefresh is requested
+  if (!forceRefresh) {
+    const entry = sentimentCache.get(cacheKey);
+    if (entry && Date.now() - entry.timestamp < SENTIMENT_CACHE_TTL_MS) {
+      return entry.data;
+    }
   }
-  return response.json();
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90_000); // 90-second timeout
+
+  try {
+    const params = new URLSearchParams({ horizon });
+    if (forceRefresh) params.set('force_refresh', 'true');
+
+    const response = await fetch(
+      `${API_BASE_URL}/sentiment/report/${ticker}?${params}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to fetch sentiment report for ${ticker}`);
+    }
+    const data: SentimentReport = await response.json();
+    sentimentCache.set(cacheKey, { data, timestamp: Date.now() });
+    return data;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out after 90 seconds. The report may still be generating — please try again.');
+    }
+    throw err;
+  }
 };
 
 // ===== Notifications =====

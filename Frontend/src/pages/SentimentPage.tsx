@@ -10,6 +10,8 @@ const SentimentPage = () => {
     const tickerParam = searchParams.get('ticker');
     if (tickerParam) {
       setTicker(tickerParam.toUpperCase());
+    } else {
+      setTicker(null);
     }
   }, [searchParams]);
 
