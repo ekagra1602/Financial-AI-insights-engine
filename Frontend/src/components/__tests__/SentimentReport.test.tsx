@@ -35,6 +35,7 @@ describe('SentimentReport rendering', () => {
     render(<SentimentReport {...defaultProps} />);
     // 'bullish' appears in the header badge span AND in "bullish Outlook" — get the exact badge span
     const bullishSpans = getAllByTextExact(document.body, /^bullish$/i, 'SPAN');
+    expect(bullishSpans.length).toBeGreaterThan(0);
     expect(bullishSpans[0]).toHaveClass('text-positive');
   });
 
@@ -45,6 +46,7 @@ describe('SentimentReport rendering', () => {
     };
     render(<SentimentReport {...defaultProps} report={bearishReport} />);
     const bearishSpans = getAllByTextExact(document.body, /^bearish$/i, 'SPAN');
+    expect(bearishSpans.length).toBeGreaterThan(0);
     expect(bearishSpans[0]).toHaveClass('text-negative');
   });
 
@@ -55,6 +57,7 @@ describe('SentimentReport rendering', () => {
     };
     render(<SentimentReport {...defaultProps} report={neutralReport} />);
     const neutralSpans = getAllByTextExact(document.body, /^neutral$/i, 'SPAN');
+    expect(neutralSpans.length).toBeGreaterThan(0);
     expect(neutralSpans[0]).toHaveClass('text-text-secondary');
   });
 
@@ -82,6 +85,21 @@ describe('SentimentReport rendering', () => {
     render(<SentimentReport {...defaultProps} report={negReport} />);
     const returnEl = screen.getByText(/-2\.50%/);
     expect(returnEl).toHaveClass('text-negative');
+  });
+
+  it('renders three quantile rows for forecast range', () => {
+    render(<SentimentReport {...defaultProps} />);
+    expect(screen.getByText(/Pessimistic \(10th percentile\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Expected \(50th percentile\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Optimistic \(90th percentile\)/i)).toBeInTheDocument();
+  });
+
+  it('renders confidence score of 78%', () => {
+    render(<SentimentReport {...defaultProps} />);
+    // confidence score is rendered as Math.round(78) = "78" followed by "%"
+    // It appears as "78%" inside the Model Confidence card
+    const confidenceEl = screen.getByText('78%');
+    expect(confidenceEl).toBeInTheDocument();
   });
 });
 
@@ -146,14 +164,6 @@ describe('SentimentReport interactions', () => {
     const flagMsg = screen.getByText('Very high debt');
     const flagCard = flagMsg.closest('[class*="border"]');
     expect(flagCard).toHaveClass('border-negative');
-  });
-
-  it('renders confidence score of 78%', () => {
-    render(<SentimentReport {...defaultProps} />);
-    // confidence score is rendered as Math.round(78) = "78" followed by "%"
-    // It appears as "78%" inside the Model Confidence card
-    const confidenceEl = screen.getByText('78%');
-    expect(confidenceEl).toBeInTheDocument();
   });
 });
 
