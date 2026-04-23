@@ -77,8 +77,8 @@ def _make_engine(supabase_returns_none=True, llm_result=None, news_score=60.0,
 
 class TestSentimentUnitIntegration:
 
-    def test_full_report_has_all_7_required_keys(self, sample_llm_input):
-        engine, _ = _make_engine(llm_input=sample_llm_input)
+    def test_full_report_has_all_7_required_keys(self):
+        engine, _ = _make_engine()
         report = engine.generate_report("AAPL", "1M")
         for key in ("ticker", "companyName", "horizon", "generatedAt", "forecast", "risk", "narrative"):
             assert key in report, f"Missing key: {key}"
@@ -88,7 +88,7 @@ class TestSentimentUnitIntegration:
         engine, _ = _make_engine(financial_score=80.0, news_score=60.0)
         report = engine.generate_report("AAPL", "1M")
         expected = round(0.55 * 80.0 + 0.45 * 60.0, 1)
-        assert abs(report["forecast"]["sentimentScore"] - expected) < 0.5
+        assert report["forecast"]["sentimentScore"] == expected
 
     def test_confidence_score_is_deterministic(self, sample_llm_input):
         """Same inputs → same confidenceScore on two consecutive calls."""
@@ -135,6 +135,14 @@ class TestSentimentUnitIntegration:
         engine, mock_sup = _make_engine()
         engine.generate_report("AAPL", "1M", force_refresh=True)
         mock_sup.get_sentiment_report.assert_not_called()
+
+    def test_cache_hit_returns_cached_report_without_generation(self):
+        """When Supabase has a cached report, generate_report returns it without calling LLM or saving."""
+        engine, mock_sup = _make_engine(supabase_returns_none=False)
+        report = engine.generate_report("AAPL", "1M")
+        assert report == {}  # mock returns {"report": {}}
+        mock_sup.save_sentiment_report.assert_not_called()
+        engine._call_llm.assert_not_called()
 
     def test_horizon_1d_uses_short_lookback(self):
         """1D horizon → news lookback window is 2 days (HORIZON_LOOKBACK_DAYS['1D']=2)."""
@@ -192,10 +200,12 @@ class TestSentimentLiveIntegration:
         assert resp.json()["ticker"] == "AAPL"
 
     def test_live_force_refresh_generates_new_report(self):
-        """force_refresh=true produces a report with generatedAt >= first."""
+        """force_refresh=true must produce a new report, not return the cached one."""
         import requests
         r1 = requests.get("http://localhost:8000/api/v1/sentiment/report/AAPL", timeout=120).json()
         r2 = requests.get(
             "http://localhost:8000/api/v1/sentiment/report/AAPL?force_refresh=true", timeout=120
         ).json()
-        assert r2["generatedAt"] >= r1["generatedAt"]
+        assert r2["generatedAt"] != r1["generatedAt"], (
+            "force_refresh=true must produce a new report, not return the cached one"
+        )
