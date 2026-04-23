@@ -7,7 +7,7 @@
 
 ## 1. File Structure
 
-13 new files added. Existing 42 tests in `Backend/tests/test_sentiment.py` are untouched.
+12 new files added. Existing 42 tests in `Backend/tests/test_sentiment.py` are untouched.
 
 ```
 Backend/tests/
@@ -48,13 +48,13 @@ Shared pytest fixtures available to all test files:
 ### `Backend/tests/test_sentiment_router.py` — 12 tests
 
 **`TestGetSentimentReport`** (7 tests):
-1. `test_returns_cached_report_when_fresh` — mock Supabase returns a report not yet expired; router returns 200 with `cache_hit=true`, LLM is never called
-2. `test_cache_miss_triggers_generation` — mock Supabase returns `None`; router calls `SentimentEngine.generate_report`; asserts 200 and all required top-level fields present (`ticker`, `horizon`, `forecast`, `risk`, `narrative`, `generatedAt`)
-3. `test_force_refresh_bypasses_cache` — Supabase has a fresh cached report; `?force_refresh=true` skips it; new report generated and saved
-4. `test_invalid_ticker_symbol_raises_422` — `GET /api/v1/sentiment/TOOLONGVALUE` returns 422 (FastAPI path param validation)
-5. `test_missing_ticker_returns_404_or_422` — `GET /api/v1/sentiment/` returns 404 (no route match)
+1. `test_returns_cached_report_when_fresh` — mock `supabase.get_sentiment_report` returns a fresh cached report; `SentimentEngine._call_llm` is never called; router returns 200 with correct `ticker` and `horizon`
+2. `test_cache_miss_triggers_generation` — mock Supabase returns `None`; router calls `SentimentEngine.generate_report` path fully; asserts 200 and all 7 required top-level fields present (`ticker`, `companyName`, `horizon`, `generatedAt`, `forecast`, `risk`, `narrative`)
+3. `test_force_refresh_bypasses_cache` — Supabase has a fresh cached report; `?force_refresh=true` causes `get_sentiment_report` NOT to be called; new report generated and saved
+4. `test_unknown_ticker_returns_404_or_500` — `GET /api/v1/sentiment/report/ZZZUNKNOWN` with no financial data mocked → 404 (ValueError from generate_report when ingest yields nothing)
+5. `test_missing_ticker_route_returns_404` — `GET /api/v1/sentiment/report/` returns 404 (no route match)
 6. `test_all_horizon_values_accepted` — parametrize over `['1D','1W','1M','3M','6M']`; each returns 200 with `horizon` matching the request
-7. `test_invalid_horizon_returns_422` — `?horizon=5Y` returns 422
+7. `test_invalid_horizon_returns_400` — `?horizon=5Y` returns 400 (router explicitly raises `HTTPException(400)`)
 
 **`TestIngestEndpoint`** (3 tests):
 8. `test_ingest_stores_financial_metadata` — POST `/api/v1/sentiment/ingest/AAPL`; mock Finnhub + Supabase; asserts `financial_metadata` upsert called once
@@ -63,7 +63,7 @@ Shared pytest fixtures available to all test files:
 
 **`TestLLMInputEndpoint`** (2 tests):
 11. `test_llm_input_returns_prompt_string` — GET `/api/v1/sentiment/llm-input/AAPL`; mock `financial_data_service`; response has `llm_input` key with non-empty string
-12. `test_llm_input_missing_data_returns_empty_string` — Supabase returns no financial_metadata rows; response has empty `llm_input`
+12. `test_llm_input_missing_data_returns_404` — Supabase returns no financial_metadata rows; router raises `HTTPException(404)` with detail message directing user to ingest first
 
 ### `Backend/tests/test_financial_data.py` — 13 tests
 
@@ -100,7 +100,7 @@ Shared pytest fixtures available to all test files:
 
 | # | Name | What it verifies |
 |---|---|---|
-| 1 | `test_full_report_shape` | `generate_report("AAPL","1M")` with all mocks → response has all 12 required top-level keys |
+| 1 | `test_full_report_shape` | `generate_report("AAPL","1M")` with all mocks → response has all 7 required top-level keys: `ticker`, `companyName`, `horizon`, `generatedAt`, `forecast`, `risk`, `narrative` |
 | 2 | `test_score_weights` | final `sentimentScore = 0.55×financial + 0.45×news` (±0.5 tolerance) |
 | 3 | `test_confidence_is_deterministic` | same inputs always produce same `confidenceScore` (call twice, assert equal) |
 | 4 | `test_news_score_2_tuple_contract` | `_compute_news_score` returns exactly a 2-tuple; `self._last_article_count` set afterward |
@@ -122,9 +122,9 @@ pytestmark = pytest.mark.skipif(
 |---|---|---|
 | L1 | `test_live_ingest_aapl` | Ingests AAPL; Supabase has a `financial_metadata` row within 10s |
 | L2 | `test_live_generate_report` | Calls `generate_report("AAPL","1M")` against real services; all 12 keys present, score in [0,100] |
-| L3 | `test_live_cache_hit` | Generate report twice; second call returns `cache_hit=True` |
-| L4 | `test_live_report_endpoint` | GET `/api/v1/sentiment/AAPL` returns 200 with well-formed JSON |
-| L5 | `test_live_force_refresh` | GET `/api/v1/sentiment/AAPL?force_refresh=true` returns fresh report with `generatedAt` ≥ first |
+| L3 | `test_live_cache_hit` | Call `GET /api/v1/sentiment/report/AAPL` twice; second response has same `generatedAt` timestamp as first (proving Supabase cache was hit, not regenerated) |
+| L4 | `test_live_report_endpoint` | GET `/api/v1/sentiment/report/AAPL` returns 200 with well-formed JSON |
+| L5 | `test_live_force_refresh` | GET `/api/v1/sentiment/report/AAPL?force_refresh=true` returns fresh report with `generatedAt` ≥ first |
 
 ---
 
@@ -157,7 +157,7 @@ pytestmark = pytest.mark.skipif(
 
 ### `Frontend/src/components/__tests__/SentimentContainer.test.tsx` — 9 tests
 
-Uses MSW handlers for `/api/v1/sentiment/:ticker` and `/api/v1/sentiment/ingest/:ticker`.
+Uses MSW handlers for `/api/v1/sentiment/report/:ticker` and `/api/v1/sentiment/ingest/:ticker`.
 
 1. `shows_ticker_input_on_initial_render` — no `?ticker` param → input visible, no report rendered
 2. `populates_ticker_from_url_param` — render with `?ticker=AAPL` → fetch triggered with AAPL
