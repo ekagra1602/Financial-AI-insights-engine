@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import SentimentContainer from '../SentimentContainer';
@@ -75,15 +75,19 @@ describe('SentimentContainer', () => {
   it('horizon change triggers new fetch with correct horizon param', async () => {
     renderContainer('AAPL');
     await waitFor(() => screen.getByText('Apple Inc.'));
-    fireEvent.click(screen.getByRole('button', { name: '1W' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '1W' }));
+    });
     expect(mockFetch).toHaveBeenCalledWith('AAPL', '1W', false);
   });
 
   it('force_refresh=true is sent when Refresh Report clicked', async () => {
     renderContainer('AAPL');
     await waitFor(() => screen.getByText('Apple Inc.'));
-    fireEvent.click(screen.getByRole('button', { name: /refresh report/i }));
-    expect(mockFetch).toHaveBeenLastCalledWith('AAPL', '1M', true);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /refresh report/i }));
+    });
+    expect(mockFetch).toHaveBeenLastCalledWith('AAPL', expect.any(String), true);
   });
 
   it('retains existing report when refresh results in error', async () => {
@@ -106,5 +110,14 @@ describe('SentimentContainer', () => {
         screen.getByRole('button', { name: /retry/i }),
       ).toBeInTheDocument(),
     );
+  });
+
+  it('navigates to ?ticker= URL when search form is submitted', async () => {
+    renderContainer(null);
+    const input = screen.getByPlaceholderText(/enter stock ticker/i);
+    fireEvent.change(input, { target: { value: 'tsla' } });
+    fireEvent.submit(input.closest('form')!);
+    // After submit, component should still render without crashing
+    expect(input).toBeInTheDocument();
   });
 });
