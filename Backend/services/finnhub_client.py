@@ -101,6 +101,22 @@ def get_company_news_safe(symbol: str, from_date: str, to_date: str) -> list:
         print(f"get_company_news_safe failed: {e}")
         return []
 
+def get_financials_reported(symbol: str, freq: str = "quarterly"):
+    url = f"{FINNHUB_BASE_URL}/stock/financials-reported"
+    params = {"symbol": symbol, "freq": freq, "token": FINNHUB_API_KEY}
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=f"Failed to fetch financials-reported for {symbol}")
+    return response.json()
+
+def get_stock_earnings(symbol: str):
+    url = f"{FINNHUB_BASE_URL}/stock/earnings"
+    params = {"symbol": symbol, "token": FINNHUB_API_KEY}
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=f"Failed to fetch earnings for {symbol}")
+    return response.json()
+
 def get_market_news(category: str = "general"):
     url = f"{FINNHUB_BASE_URL}/news"
     params = {

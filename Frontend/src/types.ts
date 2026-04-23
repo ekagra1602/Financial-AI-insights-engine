@@ -137,6 +137,40 @@ export interface ModelBreakdown {
   contribution: number;
 }
 
+export interface RiskFlag {
+  id: string;
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+}
+
+export interface TopDriver {
+  id: string;
+  factor: string;
+  impact: number;
+  description: string;
+}
+
+export interface SentimentReport {
+  ticker: string;
+  companyName: string;
+  horizon: ForecastHorizon;
+  generatedAt: string;
+  forecast: {
+    sentimentScore: number;
+    expectedReturn: number;
+    quantiles: ForecastQuantiles;
+  };
+  risk: {
+    flags: RiskFlag[];
+    topDrivers: TopDriver[];
+    confidenceScore: number;
+  };
+  narrative: {
+    stance: Stance;
+    explanation: string;
+  };
+}
+
 export interface ReminderCondition {
   type: ReminderConditionType;
   targetPrice?: number;
@@ -175,43 +209,6 @@ export interface WatchlistItem {
   name: string;
   price?: number;
   change?: number;
-}
-
-export interface RiskFlag {
-  id: string;
-  severity: 'high' | 'medium' | 'low';
-  message: string;
-}
-
-export interface RiskDriver {
-  id: string;
-  factor: string;
-  impact: number;
-  description: string;
-}
-
-export interface SentimentReport {
-  ticker: string;
-  companyName: string;
-  horizon?: ForecastHorizon;
-  generatedAt: string;
-  forecast: {
-    probabilityUp: number;
-    expectedReturn: number;
-    quantiles: ForecastQuantiles;
-    uncertainty: number;
-    modelBreakdown: ModelBreakdown[];
-  };
-  risk: {
-    flags: RiskFlag[];
-    topDrivers: RiskDriver[];
-    confidenceScore: number;
-  };
-  narrative?: {
-    stance: Stance;
-    explanation: string;
-  };
-  recentPrices?: number[];
 }
 
 export interface RecentSearch {

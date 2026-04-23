@@ -90,3 +90,5 @@ docker-compose.override.yml
 # Android Gradle cache
 Frontend/android/.gradle/
 
+# ignore Semester Implementation file doc
+Semester Implementation Timeline (Sprint 6–10).pdf

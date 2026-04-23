@@ -5,7 +5,7 @@ import EmptyState from './EmptyState';
 import ErrorMessage from './ErrorMessage';
 import { Search, TrendingUp } from 'lucide-react';
 import { SentimentReport as SentimentReportType, ForecastHorizon } from '../types';
-import { demoReports } from '../data/sentimentData';
+import { fetchSentimentReport } from '../services/api';
 
 interface SentimentContainerProps {
   ticker: string | null;
@@ -18,29 +18,17 @@ const SentimentContainer = ({ ticker }: SentimentContainerProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Simulate fetching a report
-  const fetchReport = async (searchTicker: string, horizon: ForecastHorizon = '1M') => {
+  const fetchReport = async (searchTicker: string, horizon: ForecastHorizon = '1M', force: boolean = false) => {
     setIsLoading(true);
     setError(null);
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
     try {
-      // In a real app, this would be an API call
-      const report = demoReports[searchTicker];
-      
-      if (report) {
-        // Update the horizon in the report
-        setCurrentReport({ ...report, horizon });
-      } else {
-        // If ticker not found in demo data, show error
-        setError(`No report available for ${searchTicker}. Try AAPL, GOOGL, or MSFT.`);
-        setCurrentReport(null);
-      }
-    } catch (err) {
-      setError('Failed to fetch report. Please try again.');
-      setCurrentReport(null);
+      const report = await fetchSentimentReport(searchTicker, horizon, force);
+      setCurrentReport(report);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch report. Please try again.');
+      // Do not clear currentReport — retain the existing report so the user
+      // can still read previous data while the error is communicated.
     } finally {
       setIsLoading(false);
     }
@@ -55,7 +43,7 @@ const SentimentContainer = ({ ticker }: SentimentContainerProps) => {
 
   const handleRefresh = () => {
     if (ticker) {
-      fetchReport(ticker, currentReport?.horizon);
+      fetchReport(ticker, currentReport?.horizon ?? '1M', true); // bust cache
     }
   };
 
@@ -67,7 +55,7 @@ const SentimentContainer = ({ ticker }: SentimentContainerProps) => {
 
   const handleRetry = () => {
     if (ticker) {
-      fetchReport(ticker);
+      fetchReport(ticker, currentReport?.horizon ?? '1M');
     }
   };
 
@@ -117,8 +105,8 @@ const SentimentContainer = ({ ticker }: SentimentContainerProps) => {
     );
   }
 
-  // Show error state
-  if (error) {
+  // Error with no existing report — full error screen
+  if (error && !currentReport) {
     return (
       <div className="min-h-screen bg-background">
         {searchBar}
@@ -129,10 +117,15 @@ const SentimentContainer = ({ ticker }: SentimentContainerProps) => {
     );
   }
 
-  // Show report or loading state
+  // Show report (with optional error banner when a previous report is still visible)
   return (
     <div>
       {searchBar}
+      {error && currentReport && (
+        <div className="max-w-6xl mx-auto px-4 md:px-6 mb-2">
+          <ErrorMessage message={error} onRetry={ticker ? handleRetry : undefined} />
+        </div>
+      )}
       <SentimentReport
         report={currentReport}
         isLoading={isLoading}
