@@ -1,5 +1,6 @@
 import sys
 import os
+import copy
 import pytest
 
 # Make all Backend modules importable from within the tests/ subdirectory.
@@ -11,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 @pytest.fixture(scope="session")
 def sample_report():
     """Complete SentimentReport dict matching the frontend TypeScript type."""
-    return {
+    data = {
         "ticker": "AAPL",
         "companyName": "Apple Inc.",
         "horizon": "1M",
@@ -22,7 +23,7 @@ def sample_report():
             "quantiles": {"q10": -5.0, "q50": 3.38, "q90": 11.76},
         },
         "risk": {
-            "flags": [{"id": "f1", "severity": "low", "message": "Elevated PE ratio"}],
+            "flags": [{"id": "rf1", "severity": "low", "message": "Elevated PE ratio"}],
             "topDrivers": [
                 {
                     "id": "d1",
@@ -38,12 +39,13 @@ def sample_report():
             "explanation": "Apple shows strong fundamentals with robust services revenue growth.",
         },
     }
+    return copy.deepcopy(data)
 
 
 @pytest.fixture(scope="session")
 def sample_llm_input():
     """Full llm_input dict as returned by FinancialDataService.get_latest_llm_input."""
-    return {
+    data = {
         "ticker": "AAPL",
         "company_name": "Apple Inc.",
         "industry": "Technology",
@@ -86,6 +88,7 @@ def sample_llm_input():
             "data_completeness_pct": 100.0,
         },
     }
+    return copy.deepcopy(data)
 
 
 # ── Database fixture ──────────────────────────────────────────────────────────
