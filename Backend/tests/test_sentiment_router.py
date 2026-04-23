@@ -1,11 +1,11 @@
 """
-12 tests covering all 4 sentiment router endpoints:
+12 tests covering 3 sentiment router endpoints:
   GET  /api/v1/sentiment/report/{ticker}    (7 tests)
   POST /api/v1/sentiment/ingest/{ticker}    (3 tests)
   GET  /api/v1/sentiment/llm-input/{ticker} (2 tests)
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 
 class TestGetSentimentReport:
 
-    def test_cache_miss_triggers_generation(self, client, sample_report, sample_llm_input):
+    def test_cache_miss_triggers_generation(self, client, sample_report):
         """Cache miss → engine runs and returns full 7-key report."""
         with patch("routers.sentiment.sentiment_engine") as eng:
             eng.generate_report.return_value = sample_report
@@ -64,11 +64,14 @@ class TestGetSentimentReport:
             resp = client.get("/api/v1/sentiment/report/ZZZZ")
         assert resp.status_code == 404
 
-    def test_engine_exception_returns_500(self, client):
-        """Unexpected engine exception → 500."""
-        with patch("routers.sentiment.sentiment_engine") as eng:
-            eng.generate_report.side_effect = RuntimeError("unexpected")
-            resp = client.get("/api/v1/sentiment/report/AAPL")
+    def test_engine_exception_returns_500(self, fresh_db):
+        """Unexpected engine exception → 500 (uses raise_server_exceptions=False to see response)."""
+        from fastapi.testclient import TestClient
+        from main import app
+        with TestClient(app, raise_server_exceptions=False) as c:
+            with patch("routers.sentiment.sentiment_engine") as eng:
+                eng.generate_report.side_effect = RuntimeError("unexpected")
+                resp = c.get("/api/v1/sentiment/report/AAPL")
         assert resp.status_code == 500
 
 
