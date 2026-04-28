@@ -40,6 +40,11 @@ ELI5_KEYWORDS = (
     "explain simply", "simple terms", "for beginners"
 )
 
+GREETING_PATTERN = re.compile(
+    r"^(?:hi|hello|hey|hey there|hello there|good morning|good afternoon|good evening)\W*$",
+    re.IGNORECASE,
+)
+
 async def extract_ticker(message: str):
     # 1. Check for explicit tickers in parentheses or as standalone uppercase words
     # This regex looks for words like (AAPL) or just AAPL
@@ -128,6 +133,17 @@ def should_simplify(message: str, eli5: bool) -> bool:
         return True
     lowered = message.lower()
     return any(keyword in lowered for keyword in ELI5_KEYWORDS)
+
+
+def is_simple_greeting(message: str) -> bool:
+    return bool(GREETING_PATTERN.fullmatch(message.strip()))
+
+
+def build_greeting_response() -> str:
+    return (
+        "Hello! I'm your financial AI assistant. "
+        "Ask me about a stock, market news, or a finance concept, and I'll help."
+    )
 
 
 def _format_number(value):
@@ -231,6 +247,9 @@ async def chat_endpoint(request: ChatRequest):
     message = request.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    if is_simple_greeting(message):
+        return {"response": build_greeting_response(), "source": "local_greeting", "stock_data": None}
 
     history = [m.model_dump() if hasattr(m, 'model_dump') else m.dict() for m in request.history] if request.history else []
     

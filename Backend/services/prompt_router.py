@@ -32,9 +32,15 @@ def classify_and_resolve_prompt(message: str, history: List[Dict] = None) -> Res
     ]
     
     try:
-        response_text = _call_chat_completion(messages, temperature=0.1, max_tokens=150)
+        response_text = _call_chat_completion(messages, temperature=0.1, max_tokens=150, timeout=8)
+        if not response_text:
+            raise ValueError("Empty classifier response")
+
         # Clean JSON in case it's wrapped
         cleaned = re.sub(r'```json\s*|\s*```', '', response_text).strip()
+        json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if json_match:
+            cleaned = json_match.group(0)
         data = json.loads(cleaned)
         
         # Ensure fallback ticker format

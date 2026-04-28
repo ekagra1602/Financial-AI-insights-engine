@@ -15,6 +15,20 @@ AI100_MODEL = os.getenv("AI100_MODEL", "DeepSeek-R1-Distill-Llama-70B")
 # Maximum retries for JSON parsing failures
 MAX_RETRIES = 2
 
+DEFAULT_AI_UNAVAILABLE_MESSAGE = (
+    "I'm having trouble reaching the AI service right now. "
+    "Please try again in a moment."
+)
+
+
+def _clean_chat_completion_content(content: Optional[str]) -> Optional[str]:
+    if not content:
+        return None
+
+    cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    cleaned = re.sub(r"```(?:json)?\s*|\s*```", "", cleaned).strip()
+    return cleaned or None
+
 
 def is_api_configured() -> bool:
     """Check whether the AI100 API key is available."""
@@ -456,7 +470,7 @@ def summarize_only(text: str) -> str:
     # Fallback: truncate original text
     return text[:200].strip() + ("..." if len(text) > 200 else "")
 
-def _call_chat_completion(messages, temperature: float = 0.7, max_tokens: int = 600):
+def _call_chat_completion(messages, temperature: float = 0.7, max_tokens: int = 600, timeout: int = 30):
     if not AI100_API_KEY:
         return None
 
@@ -473,13 +487,22 @@ def _call_chat_completion(messages, temperature: float = 0.7, max_tokens: int = 
     }
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response = requests.post(url, json=payload, headers=headers, timeout=timeout)
         if response.status_code != 200:
             print(f"AI100 API Error: {response.status_code} - {response.text}")
             return None
 
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        message = data["choices"][0]["message"]
+        content = message.get("content")
+
+        if not content and "tool_calls" in message:
+            try:
+                content = message["tool_calls"][0]["function"].get("arguments", "").strip() or None
+            except (KeyError, IndexError):
+                content = None
+
+        return _clean_chat_completion_content(content)
     except Exception as e:
         print(f"Error in _call_chat_completion: {e}")
         return None
@@ -513,11 +536,12 @@ def get_chat_response(message: str, history=None):
     messages.append({"role": "user", "content": message})
 
     try:
-        return _call_chat_completion(messages, temperature=0.7, max_tokens=600)
+        response = _call_chat_completion(messages, temperature=0.7, max_tokens=600)
+        return response or DEFAULT_AI_UNAVAILABLE_MESSAGE
         
     except Exception as e:
         print(f"Error calling AI100 API: {e}")
-        return "I'm having trouble connecting to the AI service right now."
+        return DEFAULT_AI_UNAVAILABLE_MESSAGE
 
 
 def simplify_for_eli5(text: str):
@@ -550,7 +574,8 @@ def simplify_for_eli5(text: str):
     ]
 
     try:
-        return _call_chat_completion(messages, temperature=0.4, max_tokens=700)
+        response = _call_chat_completion(messages, temperature=0.4, max_tokens=700)
+        return response or text
     except Exception as e:
         print(f"Error simplifying text for ELI5: {e}")
         return text
@@ -589,7 +614,8 @@ def improve_news_summary(summary_markdown: str, ticker: str = ""):
     ]
 
     try:
-        return _call_chat_completion(messages, temperature=0.35, max_tokens=900)
+        response = _call_chat_completion(messages, temperature=0.35, max_tokens=900)
+        return response or summary_markdown
     except Exception as e:
         print(f"Error improving news summary: {e}")
         return summary_markdown
@@ -635,7 +661,9 @@ def generate_aggregated_summary(articles, ticker: str = ""):
 
     try:
         response = _call_chat_completion(messages, temperature=0.3, max_tokens=150)
-        return response.strip()
+        if response:
+            return response.strip()
+        return f"I found {len(articles)} recent stories about {ticker_context}."
     except Exception as e:
         print(f"Error generating aggregated summary: {e}")
         return f"I found {len(articles)} recent stories about {ticker_context}."
@@ -667,6 +695,8 @@ def extract_ticker_with_ai(message: str):
 
     try:
         response = _call_chat_completion(messages, temperature=0.1, max_tokens=10)
+        if not response:
+            return None
         ticker = response.strip().upper().replace('$', '')
         if ticker == 'NULL' or not ticker or len(ticker) > 5:
             return None
@@ -734,7 +764,8 @@ def generate_stock_report(name: str, ticker: str, quote: dict, metrics: dict, ne
     ]
 
     try:
-        return _call_chat_completion(messages, temperature=0.5, max_tokens=700)
+        response = _call_chat_completion(messages, temperature=0.5, max_tokens=700)
+        return response or "I couldn't generate a detailed AI report right now."
     except Exception as e:
         print(f"Error generating stock report: {e}")
         return "Failed to generate report."
