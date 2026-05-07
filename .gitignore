@@ -92,3 +92,10 @@ Frontend/android/.gradle/
 
 # ignore Semester Implementation file doc
 Semester Implementation Timeline (Sprint 6–10).pdf
+
+# Playwright runner artifacts
+test-results/
+Frontend/test-results/
+
+# Xcode/SPM workspace state (machine-specific)
+Frontend/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
