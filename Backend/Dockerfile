@@ -12,7 +12,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Source code is bind-mounted via docker-compose for hot-reload
+# Copy source code into the image (was bind-mounted in dev via docker-compose)
+COPY . .
+
+# Render sets $PORT at runtime; default to 8000 for local docker run
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+# Shell-form CMD so ${PORT} env var resolves at runtime
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
