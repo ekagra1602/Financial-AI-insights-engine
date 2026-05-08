@@ -27,4 +27,16 @@ export default defineConfig({
       'buffer/': 'buffer',
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          plotly: ['plotly.js', 'react-plotly.js'],
+        },
+      },
+    },
+  },
+  esbuild: {
+    pure: ['console.log'],
+  },
 })

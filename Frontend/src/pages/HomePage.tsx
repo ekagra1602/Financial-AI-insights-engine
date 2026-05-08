@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { StockChart } from '../components/StockChart';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+const StockChart = lazy(() =>
+  import('../components/StockChart').then(m => ({ default: m.StockChart }))
+);
 import { Search, X, Star, Bell, BellRing, Plus, Check } from 'lucide-react';
 import { searchStocks, getWatchlist, addToWatchlist, removeFromWatchlist, toggleNewsBriefing, fetchKeyStatistics } from '../services/api';
 import { StockSymbol, WatchlistItem } from '../types';
@@ -144,12 +146,14 @@ const HomePage: React.FC = () => {
             {/* Left: Stock Graph (full width on mobile, 2/3 on desktop) */}
             <div className="w-full md:w-2/3 md:h-full flex flex-col gap-4 md:gap-6 md:pr-2 md:overflow-y-auto">
                 <div className="w-full">
-                    <StockChart
-                        symbol={symbol}
-                        companyName={companyName}
-                        isInWatchlist={isInWatchlist}
-                        onToggleWatchlist={handleToggleWatchlist}
-                    />
+                    <Suspense fallback={<div className="w-full h-96 flex items-center justify-center text-text-secondary">Loading chart...</div>}>
+                      <StockChart
+                          symbol={symbol}
+                          companyName={companyName}
+                          isInWatchlist={isInWatchlist}
+                          onToggleWatchlist={handleToggleWatchlist}
+                      />
+                    </Suspense>
                 </div>
                 <div className="mt-2 md:mt-4 flex-none">
                     <CompanyStats symbol={symbol} />
