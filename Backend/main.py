@@ -93,6 +93,12 @@ try:
 except Exception as e:
     print(f"Warning: account router not loaded ({e})")
 
+try:
+    from routers.tickers import router as tickers_router
+    app.include_router(tickers_router, prefix="/api/v1")
+except Exception as e:
+    print(f"Warning: tickers router not loaded ({e})")
+
 from routers.sentiment import router as sentiment_router
 app.include_router(sentiment_router, prefix="/api/v1")
 
