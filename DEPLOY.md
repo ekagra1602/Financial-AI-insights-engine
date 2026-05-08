@@ -75,6 +75,25 @@ Open the Vercel URL in a browser. Test the golden path:
 
 If anything breaks, check Render logs (dashboard → service → Logs) and browser DevTools Network tab.
 
+## Phase 5: Merge + cleanup
+
+After the smoke test passes:
+
+1. Open a PR `deploy/portfolio` → `main` on GitHub. Self-review the diff and merge (use a regular merge commit, not squash, to preserve the 11-commit history).
+2. In **Render** dashboard → service → Settings → Branch → change deploy branch from `deploy/portfolio` to `main`.
+3. In **Vercel** dashboard → project → Settings → Git → Production Branch → change from `deploy/portfolio` to `main`.
+4. Both platforms will redeploy from `main` (no-op since the code is identical, but confirms the branch switch).
+5. Delete the deploy branch:
+
+   ```bash
+   git checkout main
+   git pull origin main
+   git branch -d deploy/portfolio
+   git push origin --delete deploy/portfolio
+   ```
+
+6. Open the Vercel URL one more time and re-confirm the home page loads.
+
 ## Notes
 
 - Render free tier spins down after 15 min idle. First request after sleep takes ~50s. Subsequent requests are fast.
