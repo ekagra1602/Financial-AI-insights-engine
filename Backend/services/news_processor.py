@@ -6,11 +6,22 @@ import re
 from newspaper import Article
 import nltk
 
-# Download necessary NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+_nltk_ready = False
+
+def _ensure_nltk():
+    """Lazily download NLTK 'punkt' tokenizer data on first use.
+
+    Avoids the import-time network call which would hang or fail in
+    serverless / read-only filesystem environments.
+    """
+    global _nltk_ready
+    if _nltk_ready:
+        return
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+        nltk.download('punkt')
+    _nltk_ready = True
 
 from services.ai100_client import analyze_text
 from services.embeddings import get_embedding
@@ -232,6 +243,7 @@ class NewsProcessor:
         """
         Uses newspaper3k to scrape article text.
         """
+        _ensure_nltk()
         try:
             # Set a timeout for download
             from newspaper import Config
