@@ -1,6 +1,6 @@
 import { ChartEvent, KeyStatistics, StockDataPoint, StockEventNewsItem, StockSymbol, SentimentReport } from "../types";
 
-const API_BASE_URL = "http://localhost:8000/api/v1";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api/v1").replace(/\/+$/, "");
 
 // ===== Frontend In-Memory Cache =====
 // Prevents redundant API calls when switching tabs — data is re-used for 30s
@@ -468,7 +468,7 @@ export const triggerNewsBriefingGeneration = async (): Promise<void> => {
 
 // ===== Account Settings =====
 
-const ACCOUNT_BASE = "http://localhost:8000/api/v1/account";
+const ACCOUNT_BASE = `${API_BASE_URL}/account`;
 
 export interface AccountSettings {
   email: string;

@@ -41,13 +41,9 @@ const API_TIMEOUT_MS = 35000;
 const RETRY_DELAY_MS = 400;
 
 const buildChatEndpoints = (): string[] => {
-  const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').trim();
+  const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1').trim();
   const normalizedBaseUrl = rawBaseUrl.replace(/\/+$/, '');
-
-  return Array.from(new Set([
-    '/api/v1/chat',
-    `${normalizedBaseUrl}/api/v1/chat`,
-  ]));
+  return [`${normalizedBaseUrl}/chat`];
 };
 
 const postChatMessage = async (message: string, options: ChatRequestOptions = {}): Promise<string> => {
@@ -302,7 +298,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ userId: _userId, conversationId, init
       } else if (isTimeout) {
         friendlyMessage = 'The request timed out. Please retry in a moment.';
       } else if (isNetwork) {
-        friendlyMessage = 'I couldn\'t reach the backend chat service. Make sure backend is running at http://127.0.0.1:8000, then try again.';
+        friendlyMessage = "I couldn't reach the chat service. Please try again in a moment.";
       } else {
         friendlyMessage = 'Request failed unexpectedly. Please try again.';
       }
