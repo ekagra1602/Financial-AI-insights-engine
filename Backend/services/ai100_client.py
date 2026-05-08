@@ -456,6 +456,7 @@ def summarize_only(text: str) -> str:
         ],
         "temperature": 0.1,
         "max_tokens": 150,
+        "tool_choice": "none",
     }
 
     try:
@@ -491,7 +492,7 @@ def _call_chat_completion(messages, temperature: float = 0.7, max_tokens: int = 
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=timeout)
         if response.status_code != 200:
-            print(f"AI100 API Error: {response.status_code} - {response.text}")
+            print(f"AI100 API Error: HTTP {response.status_code}")
             return None
 
         data = response.json()
