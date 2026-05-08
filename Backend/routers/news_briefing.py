@@ -51,7 +51,7 @@ def _generate_briefing_for_symbol(symbol: str) -> Optional[dict]:
     """
     now_et = datetime.now(ET)
     today_str = now_et.strftime("%Y-%m-%d")
-    notif_id = f"{symbol}_NEWS_{today_str}_10AM"
+    notif_id = f"{symbol}_NEWS_{today_str}"
 
     # Already generated today?
     if notification_exists(notif_id):
