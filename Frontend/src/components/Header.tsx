@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Bell, MessageSquare, TrendingUp, Home, Newspaper, BellRing, User } from 'lucide-react';
+import { Bell, MessageSquare, TrendingUp, Home, Newspaper, BellRing, User } from 'lucide-react';
 import { fetchAlerts, type AlertResponse } from '../services/api';
 import AccountModal from './AccountModal';
 
@@ -45,7 +45,6 @@ const Header: React.FC<HeaderProps> = () => {
 
   const navItems = [
     { to: '/', label: 'Dashboard', icon: Home, match: (p: string) => p === '/' },
-    { to: '/web-search', label: 'Search', icon: Search, match: (p: string) => p === '/web-search' },
     { to: '/news', label: 'News', icon: Newspaper, match: (p: string) => p.includes('/news') },
     { to: '/sentiment-reports', label: 'Insights', icon: TrendingUp, match: (p: string) => p.includes('/sentiment-reports') },
     { to: '/chatbot', label: 'Chatbot', icon: MessageSquare, match: (p: string) => p === '/chatbot' },

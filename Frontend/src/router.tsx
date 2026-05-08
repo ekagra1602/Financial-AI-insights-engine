@@ -4,7 +4,6 @@ import HomePage from './pages/HomePage';
 import { NewsPage } from './pages/NewsPage';
 import { ChatbotPage } from './pages/ChatbotPage';
 import { RootLayout } from './layouts/RootLayout';
-import WebSearch from './components/WebSearch';
 import SentimentPage from './pages/SentimentPage';
 import RemindersPage from './pages/RemindersPage';
 
@@ -16,10 +15,6 @@ const router = createBrowserRouter([
       {
         path: '/',
         element: <HomePage />
-      },
-      {
-        path: '/web-search',
-        element: <WebSearch />
       },
       {
         path: '/news',
