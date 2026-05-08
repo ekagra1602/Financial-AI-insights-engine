@@ -102,6 +102,6 @@ except Exception as e:
 from routers.sentiment import router as sentiment_router
 app.include_router(sentiment_router, prefix="/api/v1")
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {"message": "Financial Insights Engine API is running"}
