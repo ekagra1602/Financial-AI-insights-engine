@@ -17,6 +17,8 @@ Backend/__pycache__/
 !README.md
 !readme.md
 !Readme.md
+!docs/superpowers/specs/*.md
+!docs/superpowers/plans/*.md
 
 # Dependencies
 node_modules/
