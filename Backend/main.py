@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.finnhub_client import router as finnhub_router
@@ -25,10 +26,11 @@ async def start_price_monitor():
     from services.price_monitor import monitor_loop
     asyncio.create_task(monitor_loop())
 
-# Configure CORS
+# Configure CORS — locked down to the frontend URL set via env var
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For MVP, allow all. In prod, restrict to frontend URL.
+    allow_origins=[FRONTEND_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

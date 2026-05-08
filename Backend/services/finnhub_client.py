@@ -35,7 +35,7 @@ def _filter_search_results(data: dict) -> dict:
 def get_finnhub_quote(symbol: str):
     url = f"{FINNHUB_BASE_URL}/quote"
     params = {"symbol": symbol, "token": FINNHUB_API_KEY}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=20)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch quote data")
     return response.json()
@@ -43,7 +43,7 @@ def get_finnhub_quote(symbol: str):
 def get_finnhub_metric(symbol: str):
     url = f"{FINNHUB_BASE_URL}/stock/metric"
     params = {"symbol": symbol, "metric": "all", "token": FINNHUB_API_KEY}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=20)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch metric data")
     return response.json()
@@ -51,7 +51,7 @@ def get_finnhub_metric(symbol: str):
 def get_finnhub_profile(symbol: str):
     url = f"{FINNHUB_BASE_URL}/stock/profile2"
     params = {"symbol": symbol, "token": FINNHUB_API_KEY}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=20)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch profile data")
     return response.json()
@@ -59,7 +59,7 @@ def get_finnhub_profile(symbol: str):
 def get_finnhub_search(query: str):
     url = f"{FINNHUB_BASE_URL}/search"
     params = {"q": query, "token": FINNHUB_API_KEY}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=20)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to search stocks")
     return response.json()
@@ -72,7 +72,7 @@ def get_company_news(symbol: str, from_date: str, to_date: str):
         "to": to_date,
         "token": FINNHUB_API_KEY
     }
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=20)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch company news")
     return response.json()
@@ -104,7 +104,7 @@ def get_company_news_safe(symbol: str, from_date: str, to_date: str) -> list:
 def get_financials_reported(symbol: str, freq: str = "quarterly"):
     url = f"{FINNHUB_BASE_URL}/stock/financials-reported"
     params = {"symbol": symbol, "freq": freq, "token": FINNHUB_API_KEY}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=20)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=f"Failed to fetch financials-reported for {symbol}")
     return response.json()
@@ -112,7 +112,7 @@ def get_financials_reported(symbol: str, freq: str = "quarterly"):
 def get_stock_earnings(symbol: str):
     url = f"{FINNHUB_BASE_URL}/stock/earnings"
     params = {"symbol": symbol, "token": FINNHUB_API_KEY}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=20)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=f"Failed to fetch earnings for {symbol}")
     return response.json()
@@ -123,7 +123,7 @@ def get_market_news(category: str = "general"):
         "category": category,
         "token": FINNHUB_API_KEY
     }
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=20)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch market news")
     return response.json()

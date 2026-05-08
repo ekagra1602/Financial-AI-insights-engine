@@ -69,7 +69,7 @@ def chat_completion(
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         if response.status_code != 200:
-            print(f"[AI100] Error {response.status_code}: {response.text[:500]}")
+            print(f"[AI100] Error: HTTP {response.status_code}")
             return None
 
         data = response.json()
@@ -131,7 +131,7 @@ def chat_completion_raw(
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         if response.status_code != 200:
-            print(f"[AI100] Error {response.status_code}: {response.text[:500]}")
+            print(f"[AI100] Error: HTTP {response.status_code}")
             return None
 
         data = response.json()
@@ -281,6 +281,7 @@ def analyze_text(text: str) -> dict:
         ],
         "temperature": 0.2,  # Lower temperature for more deterministic output
         "max_tokens": 600,
+        "tool_choice": "none",
     }
 
     # Log the prompt being sent
@@ -299,7 +300,7 @@ def analyze_text(text: str) -> dict:
             print(f"   Attempt {attempt}/{MAX_RETRIES} — HTTP {response.status_code}")
 
             if response.status_code != 200:
-                print(f"   ❌ API Error: {response.status_code} — {response.text[:300]}")
+                print(f"   ❌ API Error: HTTP {response.status_code}")
                 last_error = f"HTTP {response.status_code}"
                 continue
 
@@ -483,7 +484,8 @@ def _call_chat_completion(messages, temperature: float = 0.7, max_tokens: int = 
         "model": AI100_MODEL,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": max_tokens
+        "max_tokens": max_tokens,
+        "tool_choice": "none",
     }
 
     try:

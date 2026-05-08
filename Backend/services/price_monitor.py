@@ -7,7 +7,7 @@ conditions are met.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 MONITOR_INTERVAL = 300  # seconds between checks (5 minutes)
@@ -35,8 +35,11 @@ def _check_condition(reminder: dict, current_price: float) -> bool:
 
     if ct == "time_based" and trig_t:
         try:
-            return datetime.now() >= datetime.fromisoformat(trig_t)
-        except ValueError:
+            target_dt = datetime.fromisoformat(trig_t)
+            if target_dt.tzinfo is None:
+                target_dt = target_dt.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) >= target_dt
+        except (ValueError, TypeError):
             return False
 
     return False

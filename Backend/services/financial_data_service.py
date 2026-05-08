@@ -160,7 +160,7 @@ class FinancialDataService:
                 "key_metrics": key_metrics,
                 "eps_data": eps_data,
                 "llm_input": llm_input,
-                "updated_at": datetime.datetime.utcnow().isoformat(),
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
 
             self.supabase.save_financial_metadata(record)
